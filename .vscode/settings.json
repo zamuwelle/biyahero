@@ -1,0 +1,10 @@
+{
+	"editor.tabSize": 2,
+	"editor.detectIndentation": false,
+	"editor.insertSpaces": false,
+	"editor.formatOnSave": true,
+	"files.trimFinalNewlines": true,
+	"files.trimTrailingWhitespace": true,
+	"files.trimTrailingWhitespaceInRegexAndStrings": true,
+	"files.insertFinalNewline": false,
+}
