@@ -21,3 +21,13 @@ class RadarResult(BaseModel):
 
 class RadarResponse(BaseModel):
 	nearby_vehicles: list[RadarResult]
+
+class ETARequest(BaseModel):
+	route_id: int
+	vehicle_type: str
+	hour_of_day: int
+	day_of_week: str
+	distance_km: float
+
+class ETAResponse(BaseModel):
+	predicted_travel_time_minutes: float
