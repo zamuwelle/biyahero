@@ -27,4 +27,4 @@ npm install --legacy-peer-deps
 npx expo start
 ```
 
-Press `s` to switch to Expo Go mode, then `A` to run on Android emulator.
+Press `s` to switch to Expo Go mode, then `A` for Android or `I` for iOS simulator.
