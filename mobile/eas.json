@@ -9,10 +9,16 @@
 			"distribution": "internal"
 		},
 		"preview": {
-			"distribution": "internal"
+			"distribution": "internal",
+			"env": {
+				"npm_config_legacy_peer_deps": "true"
+			}
 		},
 		"production": {
-			"autoIncrement": true
+			"autoIncrement": true,
+			"env": {
+				"npm_config_legacy_peer_deps": "true"
+			}
 		}
 	},
 	"submit": {
