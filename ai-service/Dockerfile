@@ -13,4 +13,4 @@ COPY app/eta_model.joblib ./app/eta_model.joblib
 EXPOSE 8000
 
 # Run as a module so relative imports in app/ work correctly
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
