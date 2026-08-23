@@ -1,43 +1,45 @@
 {
-  "expo": {
-    "name": "Biyahero",
-    "slug": "biyahero",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.biyahero",
+	"expo": {
+		"name": "Biyahero",
+		"slug": "biyahero",
+		"scheme": "biyahero",
+		"version": "1.0.0",
+		"orientation": "portrait",
+		"icon": "./assets/icon.png",
+		"userInterfaceStyle": "light",
+		"ios": {
+			"supportsTablet": true,
+			"bundleIdentifier": "com.anonymous.biyahero",
 			"config": {
 				"googleMapsApiKey": "PLACEHOLDER_GOOGLE_MAPS_API_KEY"
 			}
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "package": "com.anonymous.biyahero",
+		},
+		"android": {
+			"adaptiveIcon": {
+				"backgroundColor": "#E6F4FE",
+				"foregroundImage": "./assets/android-icon-foreground.png",
+				"backgroundImage": "./assets/android-icon-background.png",
+				"monochromeImage": "./assets/android-icon-monochrome.png"
+			},
+			"package": "com.anonymous.biyahero",
 			"config": {
 				"googleMaps": {
 					"apiKey": "PLACEHOLDER"
 				}
 			}
-    },
-    "web": {
-      "bundler": "metro",
-      "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "7556787b-9d13-409d-996a-42a640c6de1d"
-      }
-    },
-    "plugins": [
-      "@rnmapbox/maps"
-    ]
-  }
+		},
+		"web": {
+			"bundler": "metro",
+			"favicon": "./assets/favicon.png"
+		},
+		"extra": {
+			"eas": {
+				"projectId": "7556787b-9d13-409d-996a-42a640c6de1d"
+			}
+		},
+		"plugins": [
+			"expo-router",
+			"expo-status-bar"
+		]
+	}
 }
