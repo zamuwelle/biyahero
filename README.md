@@ -32,3 +32,20 @@ npx expo start
 ```
 
 Press `s` to switch to Expo Go mode, then `A` for Android or `I` for iOS simulator.
+
+### Building
+
+**Local (faster, requires Android SDK):**
+```sh
+cd mobile
+npx expo run:android                   # debug build
+npx expo run:android --variant release # release APK
+```
+
+**EAS Cloud (no Android SDK needed):**
+```sh
+cd mobile
+npm install -g eas-cli
+eas login
+eas build --platform android --profile preview
+```
