@@ -1,3 +1,7 @@
+<div align="center">
+	<img width="386" height="861" alt="image" src="https://github.com/user-attachments/assets/67098ca5-5c11-4649-93e0-6e4dd76a5e32" />
+</div>
+
 # Biyahero
 
 ## Setting up Locally
@@ -27,4 +31,4 @@ npm install --legacy-peer-deps
 npx expo start
 ```
 
-Press `s` to switch to Expo Go mode, then `A` to run on Android emulator.
+Press `s` to switch to Expo Go mode, then `A` for Android or `I` for iOS simulator.
