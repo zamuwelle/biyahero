@@ -20,8 +20,11 @@ php artisan serve
 For devs, see [backend/README.md](backend/README.md).
 
 ### Mobile
-```bash
+
+```sh
 cd mobile
-npm install
-npm run start
+npm install --legacy-peer-deps
+npx expo start
 ```
+
+Press `s` to switch to Expo Go mode, then `A` to run on Android emulator.
