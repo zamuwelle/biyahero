@@ -51,3 +51,8 @@ Route::post('/vehicles/{id}/update-location', function (Request $request, $id) {
         'position' => ['lat' => $vehicle->live_lat, 'lng' => $vehicle->live_lng],
     ]);
 });
+
+//test
+Route::get('/debug/vehicles', function () {
+    return \App\Models\Vehicle::all(['id', 'vehicle_code', 'live_lat', 'live_lng', 'current_waypoint_index']);
+});
