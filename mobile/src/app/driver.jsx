@@ -95,6 +95,7 @@ export default () => {
 			{lastPos ? (
 				<MapView
 					ref={mapRef}
+					provider={null}
 					style={{ flex: 1 }}
 					initialRegion={{
 						latitude: lastPos.lat,
