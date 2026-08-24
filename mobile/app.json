@@ -21,12 +21,7 @@
 				"backgroundImage": "./assets/android-icon-background.png",
 				"monochromeImage": "./assets/android-icon-monochrome.png"
 			},
-			"package": "com.anonymous.biyahero",
-			"config": {
-				"googleMaps": {
-					"apiKey": "AIzaSyDzkqhQNs3R0IKShUUc1EuiFHJNRXquPxo"
-				}
-			}
+			"package": "com.anonymous.biyahero"
 		},
 		"web": {
 			"bundler": "metro",
