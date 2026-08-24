@@ -1,15 +1,14 @@
-FROM php:8.3-cli
+FROM php:8.4-cli
 
 WORKDIR /app
 
-# Install system deps and PHP extensions
+# Install system deps, PostgreSQL driver libs, and zip tools
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     git \
-    sqlite3 \
-    libsqlite3-dev \
-    && docker-php-ext-install pdo pdo_sqlite \
+    libpq-dev \
+    && docker-php-ext-install pdo pdo_pgsql \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
@@ -22,13 +21,9 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interactio
 # Copy the rest of the application
 COPY . .
 
-# Create SQLite database file
-RUN mkdir -p database && touch database/database.sqlite
-
 # Set permissions
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
-
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
