@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import { StatusBar } from 'expo-status-bar'
+import MapView, { Marker } from 'react-native-maps'
 
 const BACKEND_URL = 'https://biyahero-foaq.onrender.com'
 const VEHICLE_ID = 1
@@ -12,6 +13,7 @@ export default () => {
 	const [updateCount, setUpdateCount] = useState(0)
 	const [error, setError] = useState(null)
 	const subscriptionRef = useRef(null)
+	const mapRef = useRef(null)
 
 	useEffect(() => {
 		let active = true
@@ -29,14 +31,24 @@ export default () => {
 			subscriptionRef.current = await Location.watchPositionAsync(
 				{
 					accuracy: Location.Accuracy.High,
-					timeInterval: 3000,
-					distanceInterval: 3,
+					timeInterval: 1500,
+					distanceInterval: 1,
 				},
 				async (location) => {
 					if (!active) return
 
 					const { latitude, longitude } = location.coords
 					setLastPos({ lat: latitude, lng: longitude })
+
+					mapRef.current?.animateToRegion(
+						{
+							latitude,
+							longitude,
+							latitudeDelta: 0.005,
+							longitudeDelta: 0.005,
+						},
+						800
+					)
 
 					try {
 						const res = await fetch(
@@ -70,29 +82,43 @@ export default () => {
 	}, [])
 
 	return (
-		<View className="flex-1 items-center justify-center bg-sky-50 p-6">
-			<Text className="text-3xl font-bold text-blue-800 mb-2">🚌 Driver Node</Text>
-			<Text className="text-sm text-slate-400 mb-5">Vehicle ID: {VEHICLE_ID}</Text>
-
-			<View className="bg-white rounded-xl p-4 w-full mb-3 shadow-sm">
-				<Text className="text-base text-green-600 text-center">{status}</Text>
+		<View className="flex-1 bg-sky-50">
+			<View className="p-4 pt-12">
+				<Text className="text-2xl font-bold text-blue-800 text-center">🚌 Driver Node</Text>
+				<Text className="text-sm text-slate-400 text-center mb-2">Vehicle ID: {VEHICLE_ID}</Text>
+				<Text className="text-sm text-green-600 text-center">{status}</Text>
+				{lastPos && (
+					<Text className="text-xs text-slate-400 text-center mt-1">Updates sent: {updateCount}</Text>
+				)}
 			</View>
 
-			{lastPos && (
-				<View className="bg-white rounded-xl p-4 w-full mb-3 shadow-sm">
-					<Text className="text-xs text-slate-400 mb-1.5 text-center">Last sent position</Text>
-					<Text className="text-lg font-semibold text-slate-900 text-center">Lat: {lastPos.lat.toFixed(6)}</Text>
-					<Text className="text-lg font-semibold text-slate-900 text-center">Lng: {lastPos.lng.toFixed(6)}</Text>
-					<Text className="text-xs text-slate-400 mt-2 text-center">Updates sent: {updateCount}</Text>
+			{lastPos ? (
+				<MapView
+					ref={mapRef}
+					style={{ flex: 1 }}
+					initialRegion={{
+						latitude: lastPos.lat,
+						longitude: lastPos.lng,
+						latitudeDelta: 0.005,
+						longitudeDelta: 0.005,
+					}}
+				>
+					<Marker
+						coordinate={{ latitude: lastPos.lat, longitude: lastPos.lng }}
+						title="You (Driver)"
+						description={`JEEP-001 — Updates sent: ${updateCount}`}
+						pinColor="green"
+					/>
+				</MapView>
+			) : (
+				<View className="flex-1 items-center justify-center">
+					<ActivityIndicator size="large" color="#2563eb" />
+					<Text className="text-slate-400 mt-3">Waiting for GPS fix…</Text>
 				</View>
 			)}
 
-			{!lastPos && status === 'Tracking active — sending GPS to server…' && (
-				<ActivityIndicator className="mt-5" size="large" color="#2563eb" />
-			)}
-
 			{error && (
-				<View className="bg-red-50 rounded-xl p-3 w-full">
+				<View className="bg-red-50 p-3 absolute bottom-4 left-4 right-4 rounded-xl">
 					<Text className="text-sm text-red-600 text-center">⚠ {error}</Text>
 				</View>
 			)}

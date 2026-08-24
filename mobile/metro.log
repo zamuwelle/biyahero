@@ -1,0 +1,7 @@
+Could not find a shared URI scheme for the dev client between the local /ios and /android directories. App launches (QR code, interstitial, terminal keys) may not work as expected. You can configure a custom scheme using the --scheme option, or by running npx expo prebuild to regenerate the native directories with URI schemes.
+Starting project at /home/vincent/Desktop/biyahero/mobile
+Using src/app as the root directory for Expo Router.
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8081
+Logs for your project will appear below.

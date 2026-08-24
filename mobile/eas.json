@@ -6,7 +6,10 @@
 	"build": {
 		"development": {
 			"developmentClient": true,
-			"distribution": "internal"
+			"distribution": "internal",
+			"env": {
+				"NPM_CONFIG_LEGACY_PEER_DEPS": "true"
+			}
 		},
 		"preview": {
 			"distribution": "internal",
