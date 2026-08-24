@@ -53,6 +53,12 @@ Route::post('/vehicles/{id}/update-location', function (Request $request, $id) {
 });
 
 //test
+Route::get('/debug/fresh-seed', function () {
+    \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true]);
+    \Illuminate\Support\Facades\Artisan::call('db:seed', ['--class' => 'DatabaseSeeder', '--force' => true]);
+    return response()->json(['status' => 'Database reset and reseeded']);
+});
+
 Route::get('/debug/vehicles', function () {
-    return \App\Models\Vehicle::all(['id', 'vehicle_code', 'live_lat', 'live_lng', 'current_waypoint_index']);
+    return \App\Models\Vehicle::all(['id', 'vehicle_code', 'vehicle_type', 'route_id', 'live_lat', 'live_lng', 'current_waypoint_index', 'direction']);
 });
