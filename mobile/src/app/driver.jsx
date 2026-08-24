@@ -3,7 +3,7 @@ import { ActivityIndicator, Text, View } from 'react-native'
 import * as Location from 'expo-location'
 import { StatusBar } from 'expo-status-bar'
 
-const BACKEND_URL = 'http://10.123.53.108:8001'
+const BACKEND_URL = 'https://biyahero-foaq.onrender.com'
 const VEHICLE_ID = 1
 
 export default () => {
