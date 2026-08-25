@@ -1,4 +1,4 @@
-FROM php:8.4-cli
+FROM dunglas/frankenphp
 
 WORKDIR /app
 
@@ -8,7 +8,14 @@ RUN apt-get update && apt-get install -y \
     unzip \
     git \
     libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql \
+    && install-php-extensions \
+        pcntl \
+        pdo_sqlite \
+        pdo_pgsql \
+        mbstring \
+        bcmath \
+        zip \
+        opcache \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
@@ -24,9 +31,14 @@ COPY . .
 # Ensure view folder exists in production
 RUN mkdir -p resources/views
 
+# Ensure SQLite database exists
+RUN touch /app/database/database.sqlite && chown www-data:www-data /app/database/database.sqlite
+
 # Set permissions
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
+
+RUN setcap -r /usr/local/bin/frankenphp
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
