@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View, Easing } from 'react-native'
-import MapView, { Marker, Circle, AnimatedRegion, PROVIDER_GOOGLE } from 'react-native-maps'
+import MapView, { Marker, Circle, Polyline, AnimatedRegion, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useStore } from '../services/store'
+import { getRouteWaypoints } from '../services/api'
 
 const VehicleMarker = ({ vehicle, isNearest }) => {
 	const markerRef = useRef(null)
@@ -64,12 +65,19 @@ const VehicleMarker = ({ vehicle, isNearest }) => {
 }
 
 export const Map = ({ showRadar = false }) => {
+	const [waypoints, setWaypoints] = useState([])
 	const coords = useStore(s => s.coords)
 	const isRadarActive = useStore(s => s.isRadarActive)
 	const radiusKm = useStore(s => s.radiusKm)
 	const vehicles = useStore(s => s.vehicles)
 	const setMapRef = useStore(s => s.setMapRef)
 	const recenter = useStore(s => s.recenter)
+
+	useEffect(() => {
+		getRouteWaypoints(1).then(data => {
+			if (data?.waypoints) setWaypoints(data.waypoints.map(w => ({ latitude: w.lat, longitude: w.lng })))
+		})
+	}, [])
 
 	return (
 		<View className="flex-1 overflow-hidden">
@@ -83,6 +91,14 @@ export const Map = ({ showRadar = false }) => {
 				toolbarEnabled={false}
 				onMapReady={() => recenter(600)}
 			>
+				{waypoints.length > 0 && (
+					<Polyline
+						coordinates={waypoints}
+						strokeColor="#2563eb"
+						strokeWidth={4}
+					/>
+				)}
+
 				{showRadar && isRadarActive && coords && (
 					<Circle
 						center={coords}

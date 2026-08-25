@@ -8,6 +8,7 @@ import { BackButton } from '../components/BackButton'
 import { RadarButton } from '../components/RadarButton'
 import { CompassButton } from '../components/CompassButton'
 import { ArrivalCard } from '../components/ArrivalCard'
+import { Toast } from '../components/Toast'
 
 export default () => {
 	const insets = useSafeAreaInsets()
@@ -23,6 +24,7 @@ export default () => {
 		<View className="flex-1">
 			<Map showRadar />
 			<BackButton />
+			<Toast />
 			<View style={{ bottom: insets.bottom + 80 }} className="absolute right-2 gap-2 z-10">
 				<RadarButton />
 				<CompassButton />
