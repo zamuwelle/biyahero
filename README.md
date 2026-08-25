@@ -1,7 +1,3 @@
-<div align="center">
-	<img width="386" height="861" alt="image" src="https://github.com/user-attachments/assets/67098ca5-5c11-4649-93e0-6e4dd76a5e32" />
-</div>
-
 # Biyahero
 
 ## Setting up Locally
@@ -27,6 +23,7 @@ For devs, see [backend/README.md](backend/README.md).
 
 ```sh
 cd mobile
+cp .env.example .env
 npm install --legacy-peer-deps
 npx expo start
 ```
