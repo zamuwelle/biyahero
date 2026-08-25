@@ -1,4 +1,4 @@
 import { Stack } from 'expo-router'
 import '../global.css'
 
-export default () => <Stack screenOptions={{ headerShown: false }} />
+export default () => <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />

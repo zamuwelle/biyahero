@@ -2,11 +2,12 @@ import { View } from 'react-native'
 import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useStore } from '../services/store'
 
-export const Map = () => {
+export const Map = ({ showRadar = false }) => {
 	const coords = useStore(s => s.coords)
 	const isRadarActive = useStore(s => s.isRadarActive)
 	const radiusKm = useStore(s => s.radiusKm)
 	const setMapRef = useStore(s => s.setMapRef)
+	const recenter = useStore(s => s.recenter)
 
 	return (
 		<View className="flex-1 overflow-hidden">
@@ -18,8 +19,9 @@ export const Map = () => {
 				showsMyLocationButton={false}
 				showsCompass={false}
 				toolbarEnabled={false}
+				onMapReady={() => recenter(600)}
 			>
-				{isRadarActive && coords && (
+				{showRadar && isRadarActive && coords && (
 					<Circle
 						center={coords}
 						radius={radiusKm * 1000}
