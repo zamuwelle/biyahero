@@ -1,11 +1,73 @@
-import { View } from 'react-native'
-import MapView, { Circle, PROVIDER_GOOGLE } from 'react-native-maps'
+import { useEffect, useRef } from 'react'
+import { View, Easing } from 'react-native'
+import MapView, { Marker, Circle, AnimatedRegion, PROVIDER_GOOGLE } from 'react-native-maps'
+import { MaterialIcons } from '@expo/vector-icons'
 import { useStore } from '../services/store'
+
+const VehicleMarker = ({ vehicle, isNearest }) => {
+	const markerRef = useRef(null)
+	const animatedCoord = useRef(
+		new AnimatedRegion({
+			latitude: vehicle.position.latitude,
+			longitude: vehicle.position.longitude,
+			latitudeDelta: 0,
+			longitudeDelta: 0
+		})
+	).current
+
+	useEffect(() => {
+		if (vehicle?.position?.latitude == null) return
+		animatedCoord.timing({
+			latitude: vehicle.position.latitude,
+			longitude: vehicle.position.longitude,
+			duration: 1000,
+			easing: Easing.linear,
+			useNativeDriver: false
+		}).start()
+		if (isNearest) {
+			const timer = setTimeout(() => markerRef.current?.showCallout(), 100)
+			return () => clearTimeout(timer)
+		}
+	}, [vehicle.position.latitude, vehicle.position.longitude, isNearest])
+
+	const isNear = vehicle.distance_km <= 0.5
+	const meters = Math.round(vehicle.distance_km * 1000)
+	const eta = vehicle.predicted_eta_minutes < 1 ? 'arriving' : `${Math.round(vehicle.predicted_eta_minutes)} mins`
+	const title = `${eta} · ${meters}m · ${vehicle.vehicle_id}`
+
+	return (
+		<Marker.Animated
+			ref={markerRef}
+			coordinate={animatedCoord}
+			anchor={{ x: 0.5, y: 0.5 }}
+			tracksViewChanges={true}
+			title={title}
+		>
+			<View
+				collapsable={false}
+				style={{
+					width: 24,
+					height: 24,
+					borderRadius: 12,
+					backgroundColor: isNear ? '#2563eb' : '#64748b',
+					borderWidth: 2,
+					borderColor: '#ffffff',
+					alignItems: 'center',
+					justifyContent: 'center',
+					elevation: isNear ? 4 : 2
+				}}
+			>
+				<MaterialIcons name="directions-bus" size={14} color="white" />
+			</View>
+		</Marker.Animated>
+	)
+}
 
 export const Map = ({ showRadar = false }) => {
 	const coords = useStore(s => s.coords)
 	const isRadarActive = useStore(s => s.isRadarActive)
 	const radiusKm = useStore(s => s.radiusKm)
+	const vehicles = useStore(s => s.vehicles)
 	const setMapRef = useStore(s => s.setMapRef)
 	const recenter = useStore(s => s.recenter)
 
@@ -30,6 +92,10 @@ export const Map = ({ showRadar = false }) => {
 						strokeWidth={1.5}
 					/>
 				)}
+
+				{showRadar && isRadarActive && (vehicles || []).filter(v => v?.position?.latitude != null).map((v, i) => (
+					<VehicleMarker key={v.vehicle_id} vehicle={v} isNearest={i === 0} />
+				))}
 			</MapView>
 		</View>
 	)

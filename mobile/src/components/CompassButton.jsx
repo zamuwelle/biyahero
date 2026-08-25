@@ -1,26 +1,25 @@
 import { useRef } from 'react'
-import { Pressable, Animated } from 'react-native'
+import { TouchableOpacity, Animated } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useStore } from '../services/store'
 
 export const CompassButton = () => {
-	const rotateAnim = useRef(new Animated.Value(0)).current
+	const spinValue = useRef(new Animated.Value(0)).current
 	const recenter = useStore(s => s.recenter)
 
 	const handlePress = () => {
-		rotateAnim.setValue(0)
-		Animated.timing(rotateAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start()
 		recenter(500)
+		spinValue.setValue(0)
+		Animated.timing(spinValue, { toValue: 1, duration: 500, useNativeDriver: true }).start()
 	}
 
+	const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+
 	return (
-		<Pressable
-			onPress={handlePress}
-			className="p-2 rounded-2xl bg-white shadow-lg items-center justify-center active:scale-95"
-		>
-			<Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>
+		<TouchableOpacity onPress={handlePress} className="w-12 h-12 rounded-2xl bg-white shadow-lg items-center justify-center">
+			<Animated.View style={{ transform: [{ rotate: spin }] }}>
 				<MaterialIcons name="explore" size={32} color="#dc2626" />
 			</Animated.View>
-		</Pressable>
+		</TouchableOpacity>
 	)
 }
