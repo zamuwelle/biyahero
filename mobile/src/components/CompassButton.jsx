@@ -3,7 +3,7 @@ import { Pressable, Animated } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useStore } from '../services/store'
 
-export const CompassButton = ({ bottom = 32 }) => {
+export const CompassButton = () => {
 	const rotateAnim = useRef(new Animated.Value(0)).current
 	const recenter = useStore(s => s.recenter)
 
@@ -16,8 +16,7 @@ export const CompassButton = ({ bottom = 32 }) => {
 	return (
 		<Pressable
 			onPress={handlePress}
-			style={{ bottom }}
-			className="absolute right-4 p-2 rounded-2xl bg-white shadow-lg items-center justify-center active:scale-95"
+			className="p-2 rounded-2xl bg-white shadow-lg items-center justify-center active:scale-95"
 		>
 			<Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>
 				<MaterialIcons name="explore" size={32} color="#dc2626" />

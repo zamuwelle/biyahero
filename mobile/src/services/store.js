@@ -4,6 +4,9 @@ import * as Location from 'expo-location'
 export const useStore = create((set, get) => ({
 	coords: null,
 	mapRef: null,
+	isRadarActive: true,
+	radiusKm: 2.0,
+	toggleRadar: () => set(s => ({ isRadarActive: !s.isRadarActive })),
 	setMapRef: mapRef => set({ mapRef }),
 	recenter: (duration = 500) => {
 		const { mapRef, coords } = get()
