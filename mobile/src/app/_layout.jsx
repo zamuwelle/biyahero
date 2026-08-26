@@ -8,8 +8,8 @@ export default () => {
 	const fadeAnim = useRef(new Animated.Value(0)).current
 
 	useEffect(() => {
-		Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start()
-		const timer = setTimeout(() => setReady(true), 1000)
+		Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
+		const timer = setTimeout(() => setReady(true), 500)
 		return () => clearTimeout(timer)
 	}, [])
 
