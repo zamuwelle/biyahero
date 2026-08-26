@@ -6,26 +6,33 @@ use Illuminate\Database\Eloquent\Model;
 
 class Vehicle extends Model
 {
-    protected $fillable = [
-        'vehicle_code', 'vehicle_type', 'route_id',
-        'current_waypoint_index', 'direction',
-				'live_lat', 'live_lng'
-    ];
+	protected $fillable = [
+		'user_id', 'vehicle_code', 'vehicle_type', 'plate_number', 'model',
+		'occupancy', 'route_id', 'current_waypoint_index', 'direction',
+		'live_lat', 'live_lng'
+	];
 
-    public function route()
-    {
-        return $this->belongsTo(Route::class);
-    }
+	public function user()
+	{
+		return $this->belongsTo(User::class);
+	}
 
-    // Resolves the vehicle's actual lat/lng from its route's waypoints
-		public function currentPosition(): array
-		{
-			// If this vehicle has live GPS coords, use those instead of waypoint index
-			if ($this->live_lat !== null && $this->live_lng !== null) {
-					return ['lat' => (float) $this->live_lat, 'lng' => (float) $this->live_lng];
-			}
+	public function route()
+	{
+		return $this->belongsTo(Route::class);
+	}
 
-			$waypoints = $this->route->waypoints;
+	public function currentPosition(): array
+	{
+		if ($this->live_lat !== null && $this->live_lng !== null) {
+			return ['lat' => (float) $this->live_lat, 'lng' => (float) $this->live_lng];
+		}
+
+		$waypoints = $this->route?->waypoints;
+		if (!empty($waypoints) && is_array($waypoints)) {
 			return $waypoints[$this->current_waypoint_index] ?? $waypoints[0];
 		}
+
+		return ['lat' => 14.5995, 'lng' => 120.9842];
+	}
 }
