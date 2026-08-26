@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Text, Easing } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { View, Easing } from 'react-native'
 import MapView, { Marker, Circle, Polyline, AnimatedRegion, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
-import { useStore } from '@/services/store'
-import { getRouteWaypoints } from '@/services/api'
-import { IconButton } from '@/components/IconButton'
+import { useStore } from '../services/store'
+import { getRouteWaypoints } from '../services/api'
 
 const VehicleMarker = ({ vehicle, isNearest }) => {
 	const markerRef = useRef(null)
@@ -45,7 +43,6 @@ const VehicleMarker = ({ vehicle, isNearest }) => {
 			anchor={{ x: 0.5, y: 0.5 }}
 			tracksViewChanges={true}
 			title={title}
-			onPress={() => useStore.getState().setSelectedVehicle(vehicle)}
 		>
 			<View
 				collapsable={false}
@@ -67,51 +64,34 @@ const VehicleMarker = ({ vehicle, isNearest }) => {
 	)
 }
 
-export const Map = ({ showRadar = false, action }) => {
-	const insets = useSafeAreaInsets()
+export const Map = ({ showRadar = false }) => {
 	const [waypoints, setWaypoints] = useState([])
 	const coords = useStore(s => s.coords)
-	const locationEnabled = useStore(s => s.locationEnabled)
 	const isRadarActive = useStore(s => s.isRadarActive)
+	const radiusKm = useStore(s => s.radiusKm)
 	const vehicles = useStore(s => s.vehicles)
+	const setMapRef = useStore(s => s.setMapRef)
 	const recenter = useStore(s => s.recenter)
-	const initLocation = useStore(s => s.initLocation)
-	const toast = useStore(s => s.toast)
-
-	const [centeredOnce, setCenteredOnce] = useState(false)
 
 	useEffect(() => {
-		if (locationEnabled) initLocation()
-		else useStore.getState().showToast('Location is turned off')
-		getRouteWaypoints(1).then(d => Array.isArray(d?.waypoints) && setWaypoints(d.waypoints.map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))))
-	}, [locationEnabled])
-
-	useEffect(() => {
-		if (coords && locationEnabled && !centeredOnce) {
-			recenter(500)
-			setCenteredOnce(true)
-		}
-	}, [coords, locationEnabled])
+		getRouteWaypoints(1).then(data => {
+			if (data?.waypoints) setWaypoints(data.waypoints.map(w => ({ latitude: w.lat, longitude: w.lng })))
+		})
+	}, [])
 
 	return (
 		<View className="flex-1 overflow-hidden">
 			<MapView
-				ref={ref => useStore.setState({ mapRef: ref })}
+				ref={setMapRef}
 				provider={PROVIDER_GOOGLE}
-				initialRegion={coords ? {
-					latitude: coords.latitude,
-					longitude: coords.longitude,
-					latitudeDelta: 0.1,
-					longitudeDelta: 0.1
-				} : undefined}
 				style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: -60 }}
-				showsUserLocation={showRadar && locationEnabled}
+				showsUserLocation
 				showsMyLocationButton={false}
 				showsCompass={false}
 				toolbarEnabled={false}
-				onMapReady={() => coords && recenter(500)}
+				onMapReady={() => recenter(600)}
 			>
-				{showRadar && waypoints.length > 0 && (
+				{waypoints.length > 0 && (
 					<Polyline
 						coordinates={waypoints}
 						strokeColor="#2563eb"
@@ -119,38 +99,20 @@ export const Map = ({ showRadar = false, action }) => {
 					/>
 				)}
 
-				{showRadar && isRadarActive && coords && locationEnabled && (
+				{showRadar && isRadarActive && coords && (
 					<Circle
 						center={coords}
-						radius={2000}
+						radius={radiusKm * 1000}
 						fillColor="rgba(37, 99, 235, 0.08)"
 						strokeColor="rgba(37, 99, 235, 0.35)"
 						strokeWidth={1.5}
 					/>
 				)}
 
-				{showRadar && isRadarActive && locationEnabled && (vehicles || []).map((v, i) => (
+				{showRadar && isRadarActive && (vehicles || []).filter(v => v?.position?.latitude != null).map((v, i) => (
 					<VehicleMarker key={v.vehicle_id} vehicle={v} isNearest={i === 0} />
 				))}
-
-				{!showRadar && coords && locationEnabled && (
-					<Marker coordinate={coords} anchor={{ x: 0.5, y: 0.5 }}>
-						<View className="w-8 h-8 rounded-full bg-amber-400 border-2 border-white items-center justify-center shadow-md">
-							<MaterialIcons name="drive-eta" size={18} color="#0f172a" />
-						</View>
-					</Marker>
-				)}
 			</MapView>
-
-			{toast && (
-				<View pointerEvents="none" style={{ bottom: insets.bottom + 96 }} className="absolute self-center px-4 py-2 rounded-2xl bg-slate-900/95 shadow-xl border border-slate-700 items-center z-50">
-					<Text className="text-white text-xs font-black tracking-wide">{toast}</Text>
-				</View>
-			)}
-			<View style={{ bottom: insets.bottom + 80 }} className="absolute right-4 gap-3 z-30">
-				{action}
-				<IconButton name={showRadar ? 'explore' : 'my-location'} size={32} color={showRadar ? '#dc2626' : '#059669'} onPress={() => recenter(500)} />
-			</View>
 		</View>
 	)
 }

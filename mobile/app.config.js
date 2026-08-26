@@ -7,7 +7,7 @@ module.exports = ({ config }) => ({
 	scheme: 'biyahero',
 	version: '1.0.2',
 	orientation: 'portrait',
-	icon: './src/assets/icon.png',
+	icon: './assets/icon.png',
 	userInterfaceStyle: 'light',
 	ios: {
 		supportsTablet: true,
@@ -19,9 +19,9 @@ module.exports = ({ config }) => ({
 	android: {
 		adaptiveIcon: {
 			backgroundColor: '#E6F4FE',
-			foregroundImage: './src/assets/icon.png',
-			backgroundImage: './src/assets/icon.png',
-			monochromeImage: './src/assets/icon.png'
+			foregroundImage: './assets/android-icon-foreground.png',
+			backgroundImage: './assets/android-icon-background.png',
+			monochromeImage: './assets/android-icon-monochrome.png'
 		},
 		package: 'com.anonymous.biyahero',
 		config: {
@@ -32,11 +32,10 @@ module.exports = ({ config }) => ({
 	},
 	web: {
 		bundler: 'metro',
-		favicon: './src/assets/icon.png'
+		favicon: './assets/favicon.png'
 	},
 	plugins: ['expo-router'],
 	extra: {
-		apiUrl: process.env.API_URL,
 		router: {},
 		eas: {
 			projectId: '7556787b-9d13-409d-996a-42a640c6de1d'
