@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Easing } from 'react-native'
+import { View, Text, Easing } from 'react-native'
+import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import MapView, { Marker, Circle, Polyline, AnimatedRegion, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
-import { useStore } from '../services/store'
-import { getRouteWaypoints } from '../services/api'
+import { useStore } from '@/services/store'
+import { getRouteWaypoints } from '@/services/api'
+import { IconButton } from '@/components/IconButton'
 
 const VehicleMarker = ({ vehicle, isNearest }) => {
 	const markerRef = useRef(null)
@@ -64,32 +67,45 @@ const VehicleMarker = ({ vehicle, isNearest }) => {
 	)
 }
 
-export const Map = ({ showRadar = false }) => {
+export const Map = ({ showRadar = false, action }) => {
+	const router = useRouter()
+	const insets = useSafeAreaInsets()
 	const [waypoints, setWaypoints] = useState([])
 	const coords = useStore(s => s.coords)
+	const locationEnabled = useStore(s => s.locationEnabled)
 	const isRadarActive = useStore(s => s.isRadarActive)
-	const radiusKm = useStore(s => s.radiusKm)
 	const vehicles = useStore(s => s.vehicles)
-	const setMapRef = useStore(s => s.setMapRef)
 	const recenter = useStore(s => s.recenter)
+	const initLocation = useStore(s => s.initLocation)
+	const toast = useStore(s => s.toast)
 
 	useEffect(() => {
-		getRouteWaypoints(1).then(data => {
-			if (data?.waypoints) setWaypoints(data.waypoints.map(w => ({ latitude: w.lat, longitude: w.lng })))
-		})
-	}, [])
+		if (locationEnabled) initLocation()
+		else useStore.getState().showToast('Location is turned off')
+		getRouteWaypoints(1).then(d => Array.isArray(d?.waypoints) && setWaypoints(d.waypoints.map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))))
+	}, [locationEnabled])
+
+	useEffect(() => {
+		if (coords && locationEnabled) recenter(500)
+	}, [coords?.latitude, coords?.longitude, locationEnabled])
 
 	return (
 		<View className="flex-1 overflow-hidden">
 			<MapView
-				ref={setMapRef}
+				ref={ref => useStore.setState({ mapRef: ref })}
 				provider={PROVIDER_GOOGLE}
+				initialRegion={coords ? {
+					latitude: coords.latitude,
+					longitude: coords.longitude,
+					latitudeDelta: 0.1,
+					longitudeDelta: 0.1
+				} : undefined}
 				style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: -60 }}
-				showsUserLocation
+				showsUserLocation={locationEnabled}
 				showsMyLocationButton={false}
 				showsCompass={false}
 				toolbarEnabled={false}
-				onMapReady={() => recenter(600)}
+				onMapReady={() => coords && recenter(500)}
 			>
 				{waypoints.length > 0 && (
 					<Polyline
@@ -99,20 +115,31 @@ export const Map = ({ showRadar = false }) => {
 					/>
 				)}
 
-				{showRadar && isRadarActive && coords && (
+				{showRadar && isRadarActive && coords && locationEnabled && (
 					<Circle
 						center={coords}
-						radius={radiusKm * 1000}
+						radius={2000}
 						fillColor="rgba(37, 99, 235, 0.08)"
 						strokeColor="rgba(37, 99, 235, 0.35)"
 						strokeWidth={1.5}
 					/>
 				)}
 
-				{showRadar && isRadarActive && (vehicles || []).filter(v => v?.position?.latitude != null).map((v, i) => (
+				{showRadar && isRadarActive && locationEnabled && (vehicles || []).map((v, i) => (
 					<VehicleMarker key={v.vehicle_id} vehicle={v} isNearest={i === 0} />
 				))}
 			</MapView>
+
+			<IconButton name="arrow-back" size={24} onPress={() => router.back()} style={{ top: insets.top + 8 }} className="absolute left-2 z-10" />
+			{toast && (
+				<View style={{ bottom: insets.bottom + 96 }} className="absolute self-center px-4 py-2 rounded-2xl bg-slate-900/95 shadow-xl border border-slate-700 items-center z-50 pointer-events-none">
+					<Text className="text-white text-xs font-black tracking-wide">{toast}</Text>
+				</View>
+			)}
+			<View style={{ bottom: insets.bottom + 80 }} className="absolute right-2 gap-2 z-10">
+				{action}
+				<IconButton name="explore" size={32} color="#dc2626" onPress={() => recenter(500)} />
+			</View>
 		</View>
 	)
 }
