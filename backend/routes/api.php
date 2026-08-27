@@ -130,6 +130,9 @@ Route::post('/eta', [EtaController::class, 'index']);
 Route::get('/debug/fresh-seed', function () {
     Artisan::call('migrate:fresh', ['--force' => true]);
     Artisan::call('db:seed', ['--class' => 'DatabaseSeeder', '--force' => true]);
+    // The provincial demo fleets (Victoria–Tarlac + the Angeles venue
+    // corridors) live outside DatabaseSeeder because tests pin fleet counts.
+    Artisan::call('db:seed', ['--class' => 'DemoFleetSeeder', '--force' => true]);
 
     return response()->json(['status' => 'Database reset and reseeded']);
 });

@@ -106,6 +106,26 @@ const VehiclePin = memo(({ vehicle, selected, onSelect }) => {
 )
 
 /**
+ * The driver's OWN vehicle: the same badge as the fleet pins but in
+ * location-blue, so their map reads "that's me" — a vehicle, not a dot.
+ */
+const SelfVehiclePin = ({ vehicle }) => (
+	<SettledMarker
+		coordinate={vehicle.position}
+		anchor={{ x: 0.5, y: 0.5 }}
+		redrawKey={vehicle.vehicle_type}
+		zIndex={95}
+	>
+		<View
+			style={[elevation.float, { borderColor: '#FFFFFF', backgroundColor: '#1A73E8' }]}
+			className="h-11 w-11 items-center justify-center rounded-md border-2"
+		>
+			<VehicleGlyph type={vehicle.vehicle_type} width={24} color="#FFFFFF" />
+		</View>
+	</SettledMarker>
+)
+
+/**
  * Pin for where a trip (or a search) is headed — "Papuntang Tarlac City" on a
  * card should be findable on the map, not just a word. Icon-only on purpose:
  * Android shears any marker view wider than ~50dp on this stack (label chips
@@ -137,7 +157,7 @@ const DestinationPin = ({ pin }) => {
  * figure. Nothing here reads or displays the commuter's own position — there is
  * no myLocation button and no permission request.
  */
-export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, destinationPin, fitTo, myLocation, locateNonce = 0, rememberRegion = false }) => {
+export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, destinationPin, selfVehicle, fitTo, myLocation, locateNonce = 0, rememberRegion = false }) => {
 	const { theme, scheme } = useTheme()
 	const mapRef = useRef(null)
 	const [initialRegion, setInitialRegion] = useState(rememberRegion ? null : DEFAULT_REGION)
@@ -209,6 +229,8 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 					.map(v => (
 						<VehiclePin key={v.id} vehicle={v} selected={v.id === selectedId} onSelect={onSelect} />
 					))}
+
+				{!!selfVehicle?.position && <SelfVehiclePin vehicle={selfVehicle} />}
 
 				{!!myLocation && (
 					<SettledMarker coordinate={myLocation} anchor={{ x: 0.5, y: 0.5 }} redrawKey="static" zIndex={100}>

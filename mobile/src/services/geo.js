@@ -17,56 +17,72 @@ export const NEAR_M = 350
 /** Must leave this radius before the same vehicle can alert again. */
 export const NEAR_RESET_M = 600
 
-/** Metres from a point to the segment a–b, planar approximation (city scale). */
-const distToSegmentM = (p, a, b) => {
+/**
+ * Nearest polyline segment to a point: index `i`, projection parameter `t`
+ * (0..1 along that segment) and distance. `i + t` is a monotone measure of
+ * how far along the whole line the point sits. Planar approximation — fine
+ * at city scale.
+ */
+const nearestSegment = (p, pts) => {
 	const kx = 111320 * Math.cos((p.latitude * Math.PI) / 180)
 	const ky = 110574
-	const ax = (a.longitude - p.longitude) * kx
-	const ay = (a.latitude - p.latitude) * ky
-	const bx = (b.longitude - p.longitude) * kx
-	const by = (b.latitude - p.latitude) * ky
-	const dx = bx - ax
-	const dy = by - ay
-	const len2 = dx * dx + dy * dy
-	const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2))
-	return Math.hypot(ax + t * dx, ay + t * dy)
+	let best = { i: 0, t: 0, d: Infinity }
+
+	for (let i = 0; i < pts.length - 1; i++) {
+		const a = pts[i]
+		const b = pts[i + 1]
+		const ax = (a.longitude - p.longitude) * kx
+		const ay = (a.latitude - p.latitude) * ky
+		const bx = (b.longitude - p.longitude) * kx
+		const by = (b.latitude - p.latitude) * ky
+		const dx = bx - ax
+		const dy = by - ay
+		const len2 = dx * dx + dy * dy
+		const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2))
+		const d = Math.hypot(ax + t * dx, ay + t * dy)
+		if (d < best.d) best = { i, t, d }
+	}
+
+	return best
 }
 
 /**
- * The part of a route still AHEAD of a vehicle — everything behind it is
- * consumed, the way a navigation app eats the line as you drive.
+ * The navigation-style line: from the vehicle, along the corridor, ENDING at
+ * the exact destination. Everything behind the vehicle is consumed, and the
+ * corridor past the destination is never drawn — a reused route can run far
+ * beyond (or start before) where this trip is actually going.
  *
- * `target` orients the line first: corridors are reused in either direction,
- * so when the trip's destination sits at the waypoint list's START the list
- * is reversed before trimming — otherwise the leftover line would point away
- * from where the vehicle is going.
- *
- * Trimming snaps to the nearest SEGMENT and keeps that segment's end vertex:
- * a nearest-vertex cut would drop an upcoming corner for the back half of
- * every segment, and on a 2-point route would erase the line entirely past
- * the midpoint. The result always has ≥ 2 points, anchored at the vehicle.
+ * Orientation compares positions ALONG the line, not the endpoints: a
+ * destination can sit mid-corridor nearer the "wrong" end, and an
+ * endpoint-only check then reverses the line and collapses it to nothing.
  */
 export const remainingRoute = (position, waypoints, target = null) => {
 	if (!waypoints?.length) return waypoints ?? []
 
 	let pts = waypoints
-	if (target && waypoints.length > 1) {
-		const toFirst = distanceM(target, waypoints[0])
-		const toLast = distanceM(target, waypoints[waypoints.length - 1])
-		if (toFirst !== null && toLast !== null && toFirst < toLast) pts = [...waypoints].reverse()
+	if (pts.length < 2) return pts
+
+	let posSeg = position ? nearestSegment(position, pts) : null
+	let tgtSeg = target ? nearestSegment(target, pts) : null
+
+	// The vehicle must come BEFORE the destination along the drawn line.
+	if (posSeg && tgtSeg && tgtSeg.i + tgtSeg.t < posSeg.i + posSeg.t) {
+		pts = [...pts].reverse()
+		posSeg = nearestSegment(position, pts)
+		tgtSeg = nearestSegment(target, pts)
+	} else if (!posSeg && tgtSeg && tgtSeg.i + tgtSeg.t < (pts.length - 1) / 2) {
+		pts = [...pts].reverse()
+		tgtSeg = nearestSegment(target, pts)
 	}
 
-	if (!position || pts.length < 2) return pts
+	// Cut the corridor at the destination and land the line exactly on it.
+	let out = tgtSeg ? [...pts.slice(0, tgtSeg.i + 1), target] : pts
 
-	let best = 0
-	let bestD = Infinity
-	for (let i = 0; i < pts.length - 1; i++) {
-		const d = distToSegmentM(position, pts[i], pts[i + 1])
-		if (d < bestD) {
-			bestD = d
-			best = i
-		}
+	// Consume everything behind the vehicle, anchoring the line on it.
+	if (posSeg) {
+		const from = Math.min(posSeg.i, out.length - 2)
+		out = [position, ...out.slice(from + 1)]
 	}
 
-	return [position, ...pts.slice(best + 1)]
+	return out
 }
