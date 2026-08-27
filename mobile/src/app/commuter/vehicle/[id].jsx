@@ -12,8 +12,9 @@ import { VehicleGlyph } from '@/components/VehicleGlyph'
 import { CapacityBadge } from '@/components/CapacityBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { fetchVehicle } from '@/services/api'
-import { theme, elevation, VEHICLE_LABELS, PING_INTERVAL_MS } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { elevation, VEHICLE_LABELS, PING_INTERVAL_MS } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 const Stat = ({ label, children }) => (
 	<View className="flex-1 items-center gap-[6px]">
@@ -41,6 +42,8 @@ const DetailRow = ({ tint, children, title, subtitle }) => (
  * is it now and can I get on", which is everything the data actually supports.
  */
 export default function VehicleDetail() {
+	const copy = useCopy()
+	const { theme, statusBar } = useTheme()
 	const { id } = useLocalSearchParams()
 	const router = useRouter()
 	const insets = useSafeAreaInsets()
@@ -95,7 +98,7 @@ export default function VehicleDetail() {
 
 	return (
 		<View className="flex-1 bg-surface-canvas">
-			<StatusBar style="dark" />
+			<StatusBar style={statusBar} />
 			<Map
 				vehicles={[vehicle]}
 				selectedId={vehicle.id}

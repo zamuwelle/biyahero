@@ -2,11 +2,14 @@ import { View, Pressable } from 'react-native'
 import { Txt } from '@/components/ui/Txt'
 import { Badge } from '@/components/ui/Badge'
 import { VehicleGlyph } from './VehicleGlyph'
-import { theme, VEHICLE_LABELS } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { VEHICLE_LABELS } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /** The driver's own vehicle, as it appears on their home and profile screens. */
 export const DriverVehicleCard = ({ vehicle, verified = false, onEdit }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	if (!vehicle) return null
 
 	const meta = [vehicle.plate_number, vehicle.body_number && `Body No. ${vehicle.body_number}`]

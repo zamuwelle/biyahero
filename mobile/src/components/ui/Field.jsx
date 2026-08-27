@@ -1,12 +1,16 @@
 import { View, TextInput } from 'react-native'
 import { Txt } from './Txt'
-import { theme, type } from '@/theme/tokens'
+import { type } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * Labelled input. `prefix` carries the fixed +63 on the sign-up screen;
  * `mono` switches to JetBrains for plate numbers, which scan faster in mono.
  */
-export const Field = ({ label, error, prefix, mono = false, hint, className = '', ...input }) => (
+export const Field = ({ label, error, prefix, mono = false, hint, className = '', ...input }) => {
+	const { theme } = useTheme()
+
+	return (
 	<View className={`gap-2 ${className}`}>
 		{!!label && <Txt variant="labelS" className="text-fg-secondary">{label}</Txt>}
 		<View
@@ -25,3 +29,4 @@ export const Field = ({ label, error, prefix, mono = false, hint, className = ''
 		{!error && !!hint && <Txt variant="caption" className="text-fg-secondary">{hint}</Txt>}
 	</View>
 )
+}

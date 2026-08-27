@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
 import * as api from './api'
 import { PING_INTERVAL_MS } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { getCopy } from '@/constants/copy'
 
-const KEYS = { role: 'biyahero.role', token: 'biyahero.token', searches: 'biyahero.searches' }
+const KEYS = { role: 'biyahero.role', token: 'biyahero.token', driver: 'biyahero.driver', searches: 'biyahero.searches' }
 const MAX_RECENT = 3
 
 let pollTimer = null
@@ -44,15 +44,26 @@ export const useStore = create((set, get) => ({
 
 			if (token) {
 				api.setAuthToken(token)
+
+				// Show the cached profile immediately; the network refresh follows.
+				const cached = await AsyncStorage.getItem(KEYS.driver).catch(() => null)
+				if (cached) set({ driver: JSON.parse(cached) })
+
 				try {
 					const driver = await api.fetchMe()
 					set({ driver })
+					await AsyncStorage.setItem(KEYS.driver, JSON.stringify(driver))
 					const trip = await api.fetchCurrentTrip().catch(() => null)
 					if (trip) set({ trip, isBroadcasting: true })
-				} catch {
-					// Token no longer valid — drop it rather than half-restoring a session.
-					await AsyncStorage.removeItem(KEYS.token)
-					api.setAuthToken(null)
+				} catch (e) {
+					// Only a REJECTED token ends the session. A network failure must
+					// not log the driver out — that turns every dead spot into a
+					// forced re-registration.
+					if (e?.response?.status === 401) {
+						await AsyncStorage.multiRemove([KEYS.token, KEYS.driver])
+						api.setAuthToken(null)
+						set({ driver: null })
+					}
 				}
 			}
 
@@ -106,7 +117,7 @@ export const useStore = create((set, get) => ({
 	clearSearches: async () => {
 		set({ recentSearches: [] })
 		await AsyncStorage.removeItem(KEYS.searches)
-		get().showToast(copy.settings.searchesCleared)
+		get().showToast(getCopy().settings.searchesCleared)
 	},
 
 	refresh: async () => {
@@ -120,7 +131,7 @@ export const useStore = create((set, get) => ({
 			})
 			set({ vehicles, activeCount: meta.count ?? vehicles.length, error: null })
 		} catch {
-			set({ error: copy.common.offline })
+			set({ error: getCopy().common.offline })
 		} finally {
 			set({ loading: false })
 		}
@@ -152,6 +163,7 @@ export const useStore = create((set, get) => ({
 			const data = await api.registerDriver(payload)
 			api.setAuthToken(data.token)
 			await AsyncStorage.setItem(KEYS.token, data.token)
+			await AsyncStorage.setItem(KEYS.driver, JSON.stringify(data.user))
 			set({ driver: data.user })
 			return data.user
 		} finally {
@@ -163,6 +175,7 @@ export const useStore = create((set, get) => ({
 		const data = await api.loginDriver(credentials)
 		api.setAuthToken(data.token)
 		await AsyncStorage.setItem(KEYS.token, data.token)
+		await AsyncStorage.setItem(KEYS.driver, JSON.stringify(data.user))
 		set({ driver: data.user })
 		return data.user
 	},
@@ -172,6 +185,7 @@ export const useStore = create((set, get) => ({
 		try {
 			const driver = await api.fetchMe()
 			set({ driver })
+			await AsyncStorage.setItem(KEYS.driver, JSON.stringify(driver))
 			return driver
 		} catch {
 			return null
@@ -180,7 +194,7 @@ export const useStore = create((set, get) => ({
 
 	logout: async () => {
 		await api.logoutDriver()
-		await AsyncStorage.removeItem(KEYS.token)
+		await AsyncStorage.multiRemove([KEYS.token, KEYS.driver])
 		api.setAuthToken(null)
 		get().stopBroadcast()
 		set({ driver: null, trip: null, summary: null })
@@ -202,13 +216,13 @@ export const useStore = create((set, get) => ({
 		// The server refuses an unapproved driver too; this is the local guard so
 		// we never even ask for GPS from someone who cannot broadcast yet.
 		if (get().driver?.verification_status !== 'approved') {
-			get().showToast(copy.pending.notApproved)
+			get().showToast(getCopy().pending.notApproved)
 			return null
 		}
 
 		const { status } = await Location.requestForegroundPermissionsAsync()
 		if (status !== 'granted') {
-			get().showToast(copy.settings.locationOff)
+			get().showToast(getCopy().settings.locationOff)
 			return null
 		}
 
@@ -250,7 +264,7 @@ export const useStore = create((set, get) => ({
 		try {
 			await api.setTripCapacity(trip.id, capacity)
 		} catch {
-			get().showToast(copy.common.genericError)
+			get().showToast(getCopy().common.genericError)
 		}
 	},
 

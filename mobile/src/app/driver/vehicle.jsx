@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Screen } from '@/components/ui/Screen'
@@ -8,20 +8,65 @@ import { Field } from '@/components/ui/Field'
 import { Button } from '@/components/ui/Button'
 import { VehicleGlyph } from '@/components/VehicleGlyph'
 import { useRegistration } from '@/services/registration'
-import { theme, VEHICLE_TYPES, VEHICLE_LABELS } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useStore } from '@/services/store'
+import { updateVehicle } from '@/services/api'
+import { VEHICLE_TYPES, VEHICLE_LABELS } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
-/** 12 · Vehicle Details. Type is picked by silhouette, the way it is on the road. */
+/**
+ * 12 · Vehicle Details. Type is picked by silhouette, the way it is on the road.
+ *
+ * Doubles as the EDIT screen (?edit=1 from the profile): fields prefill from
+ * the registered vehicle and save via PATCH instead of continuing to the
+ * licence step. The plate is half the login credential, so editing it changes
+ * what the driver types to log in — the screen says so.
+ */
 export default function VehicleDetails() {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const router = useRouter()
-	const { vehicle_type, plate_number, model, body_number } = useRegistration()
+	const { vehicle_type, plate_number, model, body_number, editing } = useRegistration()
 	const update = useRegistration(s => s.update)
+
+	const driver = useStore(s => s.driver)
+	const refreshMe = useStore(s => s.refreshMe)
+	const showToast = useStore(s => s.showToast)
+
+	const isEdit = editing && !!driver?.vehicle
 	const [error, setError] = useState(null)
+	const [saving, setSaving] = useState(false)
+
+	// Leaving the screen ends edit mode, so a later registration starts clean.
+	const endEdit = useRegistration(s => s.endEdit)
+	useEffect(() => () => endEdit(), [])
 
 	const next = () => {
 		if (!plate_number.trim()) return setError(copy.vehicleDetails.invalidPlate)
 		setError(null)
 		router.push('/driver/licence')
+	}
+
+	const save = async () => {
+		if (!plate_number.trim()) return setError(copy.vehicleDetails.invalidPlate)
+		setError(null)
+		setSaving(true)
+
+		try {
+			await updateVehicle({
+				vehicle_type,
+				plate_number: plate_number.trim(),
+				model: model.trim() || undefined,
+				body_number: body_number.trim() || undefined
+			})
+			await refreshMe()
+			showToast(copy.vehicleDetails.saved)
+			router.back()
+		} catch {
+			showToast(copy.common.genericError)
+		} finally {
+			setSaving(false)
+		}
 	}
 
 	return (
@@ -30,8 +75,8 @@ export default function VehicleDetails() {
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6 pt-4 gap-8 flex-grow" keyboardShouldPersistTaps="handled">
 					<Header
 						eyebrow={copy.vehicleDetails.eyebrow}
-						title={copy.vehicleDetails.title}
-						right={<Txt variant="labelS" className="text-fg-secondary">{copy.signUp.step(1, 2)}</Txt>}
+						title={isEdit ? copy.vehicleDetails.editTitle : copy.vehicleDetails.title}
+						right={isEdit ? null : <Txt variant="labelS" className="text-fg-secondary">{copy.signUp.step(1, 2)}</Txt>}
 					/>
 
 					<Txt variant="bodyM" className="text-fg-secondary">{copy.vehicleDetails.body}</Txt>
@@ -68,7 +113,7 @@ export default function VehicleDetails() {
 						onChangeText={value => update({ plate_number: value.toUpperCase() })}
 						autoCapitalize="characters"
 						mono
-						hint={copy.vehicleDetails.plateNote}
+						hint={isEdit ? copy.vehicleDetails.editPlateNote : copy.vehicleDetails.plateNote}
 						error={error}
 					/>
 
@@ -90,11 +135,17 @@ export default function VehicleDetails() {
 					<View className="flex-1" />
 
 					<View className="gap-4">
-						<Button label={copy.vehicleDetails.continue} onPress={next} disabled={!plate_number.trim()} />
-						<Pressable onPress={() => router.push('/driver/login')} className="items-center py-1 active:opacity-70">
-							<Txt variant="bodyMStrong" className="text-fg-secondary">{copy.signUp.haveAccount}</Txt>
-						</Pressable>
-						<Txt variant="caption" className="text-center text-fg-secondary">{copy.signUp.terms}</Txt>
+						{isEdit ? (
+							<Button label={copy.vehicleDetails.save} onPress={save} loading={saving} disabled={!plate_number.trim()} />
+						) : (
+							<>
+								<Button label={copy.vehicleDetails.continue} onPress={next} disabled={!plate_number.trim()} />
+								<Pressable onPress={() => router.push('/driver/login')} className="items-center py-1 active:opacity-70">
+									<Txt variant="bodyMStrong" className="text-fg-secondary">{copy.signUp.haveAccount}</Txt>
+								</Pressable>
+								<Txt variant="caption" className="text-center text-fg-secondary">{copy.signUp.terms}</Txt>
+							</>
+						)}
 					</View>
 				</ScrollView>
 			</KeyboardAvoidingView>

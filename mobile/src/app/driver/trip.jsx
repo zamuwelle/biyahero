@@ -10,13 +10,16 @@ import { Button } from '@/components/ui/Button'
 import { CapacityPicker } from '@/components/CapacityPicker'
 import { useStore } from '@/services/store'
 import { elevation } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /**
  * 17 · Active Trip. While this screen is open the vehicle is broadcasting and
  * visible to commuters — ending the trip removes it from their map immediately.
  */
 export default function ActiveTrip() {
+	const copy = useCopy()
+	const { statusBar } = useTheme()
 	const router = useRouter()
 	const insets = useSafeAreaInsets()
 
@@ -49,7 +52,7 @@ export default function ActiveTrip() {
 
 	return (
 		<View className="flex-1 bg-surface-canvas">
-			<StatusBar style="dark" />
+			<StatusBar style={statusBar} />
 			<Map vehicles={[]} routeWaypoints={waypoints} fitTo={waypoints} />
 
 			<View

@@ -1,6 +1,6 @@
 import { View } from 'react-native'
 import { Txt } from '@/components/ui/Txt'
-import * as copy from '@/constants/copy'
+import { useCopy } from '@/constants/copy'
 
 const STATES = {
 	open: { filled: 1, bg: 'bg-capacity-open-bg', fg: 'text-capacity-open-fg', seg: 'bg-capacity-open-fg' },
@@ -15,6 +15,7 @@ const STATES = {
  * bare coloured dot.
  */
 export const CapacityBadge = ({ state = 'unknown' }) => {
+	const copy = useCopy()
 	const s = STATES[state] ?? STATES.unknown
 
 	return (

@@ -72,7 +72,7 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'vehicle_code' => strtoupper(substr($validated['vehicle_type'], 0, 4)).'-'.str_pad((string) $user->id, 3, '0', STR_PAD_LEFT),
                 'vehicle_type' => $validated['vehicle_type'],
-                'plate_number' => $this->normalisePlate($validated['plate_number']),
+                'plate_number' => Vehicle::normalisePlate($validated['plate_number']),
                 'model' => $validated['model'] ?? null,
                 'body_number' => $validated['body_number'] ?? null,
                 'route_id' => 1,
@@ -101,7 +101,7 @@ class AuthController extends Controller
         // One message for both failures: revealing which half was wrong would
         // turn this into an oracle for enumerating licence numbers.
         $plateMatches = $user?->vehicle
-            && $user->vehicle->plate_number === $this->normalisePlate($validated['plate_number']);
+            && $user->vehicle->plate_number === Vehicle::normalisePlate($validated['plate_number']);
 
         if (! $plateMatches) {
             return $this->error('Hindi tugma ang lisensya at plaka.', 404);
@@ -123,12 +123,6 @@ class AuthController extends Controller
         request()->user()->currentAccessToken()->delete();
 
         return response()->noContent();
-    }
-
-    /** Plates are painted on the vehicle; spacing varies, the characters do not. */
-    private function normalisePlate(string $plate): string
-    {
-        return strtoupper(preg_replace('/\s+/', ' ', trim($plate)) ?? '');
     }
 
     /**

@@ -162,3 +162,8 @@ export const setTripCapacity = (tripId, capacity) =>
 	client.patch(`/trips/${tripId}/capacity`, { capacity }).then(res => res.data?.data)
 
 export const endTrip = tripId => client.post(`/trips/${tripId}/end`).then(res => res.data?.data)
+
+export const fetchTripHistory = () => client.get('/trips/history').then(res => res.data?.data ?? [])
+
+/** NOTE: the plate is half the login credential — changing it changes the login. */
+export const updateVehicle = payload => client.patch('/vehicle', payload).then(res => res.data?.data)

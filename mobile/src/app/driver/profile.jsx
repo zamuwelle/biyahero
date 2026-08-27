@@ -10,16 +10,20 @@ import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/StatCard'
 import { DriverVehicleCard } from '@/components/DriverVehicleCard'
 import { useStore } from '@/services/store'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useRegistration } from '@/services/registration'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /**
  * 18 · Driver Profile. No rating anywhere by design — passengers are anonymous,
  * so nobody could be held accountable for a review. The screen says so out loud.
  */
 export default function DriverProfile() {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const router = useRouter()
 	const driver = useStore(s => s.driver)
+	const beginEdit = useRegistration(s => s.beginEdit)
 	const logout = useStore(s => s.logout)
 
 	if (!driver) return <Redirect href="/driver/vehicle" />
@@ -71,14 +75,17 @@ export default function DriverProfile() {
 						<Txt variant="labelS" className="text-fg-secondary">{copy.driverProfile.myVehicle}</Txt>
 						<DriverVehicleCard
 							vehicle={driver.vehicle}
-							onEdit={() => router.push('/driver/vehicle')}
+							onEdit={() => {
+								beginEdit(driver.vehicle)
+								router.push('/driver/vehicle')
+							}}
 						/>
 					</View>
 
 					<View className="gap-3">
-						<Row title={copy.driverProfile.tripHistory} onPress={() => {}} />
+						<Row title={copy.driverProfile.tripHistory} onPress={() => router.push('/driver/history')} />
 						<Row title={copy.driverProfile.languageTheme} onPress={() => router.push('/settings')} />
-						<Row title={copy.driverProfile.help} onPress={() => {}} />
+						<Row title={copy.driverProfile.help} onPress={() => router.push('/driver/help')} />
 					</View>
 
 					<Pressable onPress={signOut} accessibilityRole="button" className="items-center py-2 active:opacity-70">

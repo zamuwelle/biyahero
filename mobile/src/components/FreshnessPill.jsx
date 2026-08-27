@@ -1,7 +1,7 @@
 import { View } from 'react-native'
 import { Txt } from '@/components/ui/Txt'
-import * as copy from '@/constants/copy'
-import { theme } from '@/theme/tokens'
+import { useCopy } from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * How fresh the last ping is — this is what the commuter gets INSTEAD of an ETA.
@@ -9,6 +9,8 @@ import { theme } from '@/theme/tokens'
  * so "we don't know" never masquerades as "it's here".
  */
 export const FreshnessPill = ({ minutesAgo = null, stale = false }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	if (!stale) {
 		return (
 			<View className="h-7 flex-row items-center gap-[6px] rounded-full bg-capacity-open-bg pl-[9px] pr-[11px]">

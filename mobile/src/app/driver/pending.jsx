@@ -6,13 +6,15 @@ import { Screen } from '@/components/ui/Screen'
 import { Txt } from '@/components/ui/Txt'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/services/store'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /** How often to re-check with the server while the driver waits. */
 const POLL_MS = 15_000
 
 const Step = ({ title, body, state, last = false }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const done = state === 'done'
 	const active = state === 'active'
 
@@ -49,6 +51,8 @@ const Step = ({ title, body, state, last = false }) => {
  * after looking at the licence photo — nothing here advances on a timer.
  */
 export default function VerificationPending() {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const router = useRouter()
 	const driver = useStore(s => s.driver)
 	const refreshMe = useStore(s => s.refreshMe)

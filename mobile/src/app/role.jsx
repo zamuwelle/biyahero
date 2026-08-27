@@ -6,10 +6,11 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { LogoMark } from '@/components/LogoMark'
 import { useStore } from '@/services/store'
-import * as copy from '@/constants/copy'
+import { useCopy } from '@/constants/copy'
 
 /** 02 · Role Select. One app — the choice is remembered and reversible. */
 export default function RoleSelect() {
+	const copy = useCopy()
 	const router = useRouter()
 	const setRole = useStore(s => s.setRole)
 

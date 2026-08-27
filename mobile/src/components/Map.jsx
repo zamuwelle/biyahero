@@ -3,8 +3,9 @@ import { View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { VehicleGlyph } from './VehicleGlyph'
-import { theme, elevation } from '@/theme/tokens'
-import { MAP_STYLE } from '@/theme/mapStyle'
+import { elevation } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
+import { MAP_STYLES } from '@/theme/mapStyle'
 
 /**
  * Metro Manila, where the demo fleet runs. The commuter pans from here — the app
@@ -26,7 +27,10 @@ const DEFAULT_REGION = {
  */
 const REGION_KEY = 'biyahero.mapRegion'
 
-const VehiclePin = ({ vehicle, selected, onPress }) => (
+const VehiclePin = ({ vehicle, selected, onPress }) => {
+	const { theme } = useTheme()
+
+	return (
 	<Marker
 		coordinate={vehicle.position}
 		onPress={onPress}
@@ -53,7 +57,8 @@ const VehiclePin = ({ vehicle, selected, onPress }) => (
 			/>
 		</View>
 	</Marker>
-)
+	)
+}
 
 /**
  * Map Canvas. Desaturated on purpose: the map is the ground, vehicles are the
@@ -61,6 +66,7 @@ const VehiclePin = ({ vehicle, selected, onPress }) => (
  * no myLocation button and no permission request.
  */
 export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo, rememberRegion = false }) => {
+	const { theme, scheme } = useTheme()
 	const mapRef = useRef(null)
 	const [initialRegion, setInitialRegion] = useState(rememberRegion ? null : DEFAULT_REGION)
 
@@ -98,7 +104,7 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo
 				onRegionChangeComplete={region => {
 					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(region)).catch(() => {})
 				}}
-				customMapStyle={MAP_STYLE}
+				customMapStyle={MAP_STYLES[scheme]}
 				showsUserLocation={false}
 				showsMyLocationButton={false}
 				showsCompass={false}

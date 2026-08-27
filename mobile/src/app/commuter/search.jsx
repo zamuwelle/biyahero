@@ -8,10 +8,13 @@ import { SearchBar } from '@/components/SearchBar'
 import { EmptyState } from '@/components/EmptyState'
 import { useStore } from '@/services/store'
 import { fetchDestinations } from '@/services/api'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
-const PlaceRow = ({ icon, tint, name, subtitle, onPress }) => (
+const PlaceRow = ({ icon, tint, name, subtitle, onPress }) => {
+	const { theme } = useTheme()
+
+	return (
 	<Pressable
 		onPress={onPress}
 		accessibilityRole="button"
@@ -28,13 +31,16 @@ const PlaceRow = ({ icon, tint, name, subtitle, onPress }) => (
 			{!!subtitle && <Txt variant="caption" className="text-fg-secondary">{subtitle}</Txt>}
 		</View>
 	</Pressable>
-)
+	)
+}
 
 /**
  * 06 · Destination Search. Recent searches are device-only — they are read from
  * AsyncStorage and never sent anywhere, which is what the footnote promises.
  */
 export default function DestinationSearch() {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const router = useRouter()
 	const [query, setQuery] = useState('')
 	const [results, setResults] = useState([])

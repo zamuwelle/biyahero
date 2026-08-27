@@ -18,6 +18,12 @@ class Vehicle extends Model
         'last_ping_at' => 'datetime',
     ];
 
+    /** Plates are painted on the vehicle; spacing varies, the characters do not. */
+    public static function normalisePlate(string $plate): string
+    {
+        return strtoupper(preg_replace('/\s+/', ' ', trim($plate)) ?? '');
+    }
+
     public function route()
     {
         return $this->belongsTo(Route::class);

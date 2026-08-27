@@ -8,9 +8,9 @@ import { Avatar } from '@/components/ui/Avatar'
 import { StatCard } from '@/components/StatCard'
 import { DriverVehicleCard } from '@/components/DriverVehicleCard'
 import { useStore } from '@/services/store'
-import * as copy from '@/constants/copy'
+import { useCopy } from '@/constants/copy'
 
-const greeting = () => {
+const greeting = copy => {
 	const hour = new Date().getHours()
 	if (hour < 12) return copy.driverHome.greetingMorning
 	if (hour < 18) return copy.driverHome.greetingAfternoon
@@ -19,6 +19,7 @@ const greeting = () => {
 
 /** 15 · Driver Home — off duty. Two taps of work: where to, and how full. */
 export default function DriverHome() {
+	const copy = useCopy()
 	const router = useRouter()
 	const driver = useStore(s => s.driver)
 	const trip = useStore(s => s.trip)
@@ -41,7 +42,7 @@ export default function DriverHome() {
 			<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6 pt-6 gap-6 flex-grow">
 				<View className="flex-row items-start justify-between">
 					<View className="min-w-0 flex-1">
-						<Txt variant="bodyL" className="text-fg-secondary">{greeting()}</Txt>
+						<Txt variant="bodyL" className="text-fg-secondary">{greeting(copy)}</Txt>
 						<Txt variant="displayS" numberOfLines={1}>{driver.name}</Txt>
 					</View>
 					<Pressable onPress={() => router.push('/driver/profile')} accessibilityRole="button" className="active:opacity-70">

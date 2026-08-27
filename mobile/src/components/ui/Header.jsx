@@ -2,11 +2,13 @@ import { View, Pressable } from 'react-native'
 import { useRouter } from 'expo-router'
 import { MaterialIcons } from '@expo/vector-icons'
 import { Txt } from './Txt'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /** Back affordance + title. `eyebrow` carries the step label on the driver wizard. */
 export const Header = ({ title, eyebrow, onBack, right, className = '' }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const router = useRouter()
 	const goBack = onBack || (() => (router.canGoBack() ? router.back() : router.replace('/')))
 

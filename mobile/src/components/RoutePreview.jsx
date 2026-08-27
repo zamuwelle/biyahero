@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { View } from 'react-native'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
-import { theme } from '@/theme/tokens'
-import { MAP_STYLE } from '@/theme/mapStyle'
+import { useTheme } from '@/theme/useTheme'
+import { MAP_STYLES } from '@/theme/mapStyle'
 
 /** Non-interactive thumbnail of the route the driver is about to declare. */
 export const RoutePreview = ({ waypoints = [], height = 150 }) => {
+	const { theme, scheme } = useTheme()
 	const mapRef = useRef(null)
 
 	useEffect(() => {
@@ -33,7 +34,7 @@ export const RoutePreview = ({ waypoints = [], height = 150 }) => {
 				ref={mapRef}
 				provider={PROVIDER_GOOGLE}
 				style={{ flex: 1 }}
-				customMapStyle={MAP_STYLE}
+				customMapStyle={MAP_STYLES[scheme]}
 				initialRegion={{ ...start, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
 				scrollEnabled={false}
 				zoomEnabled={false}

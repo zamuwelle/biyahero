@@ -10,8 +10,8 @@ import { Field } from '@/components/ui/Field'
 import { Button } from '@/components/ui/Button'
 import { useRegistration } from '@/services/registration'
 import { useStore } from '@/services/store'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /** Mirrors the server rule: PH licences are a 3-2-6 pattern. */
 const LICENCE_PATTERN = /^[A-Z]\d{2}-\d{2}-\d{6}$/
@@ -29,6 +29,8 @@ const EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
  * driver afterwards with `php artisan biyahero:review {licence} --revoke`.
  */
 export default function LicenceCapture() {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const router = useRouter()
 	const draft = useRegistration()
 	const update = useRegistration(s => s.update)

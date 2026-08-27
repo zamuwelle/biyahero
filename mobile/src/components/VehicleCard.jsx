@@ -4,8 +4,8 @@ import { Txt } from '@/components/ui/Txt'
 import { VehicleGlyph } from './VehicleGlyph'
 import { CapacityBadge } from './CapacityBadge'
 import { FreshnessPill } from './FreshnessPill'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /**
  * Destination first — the question the commuter is actually asking.
@@ -15,6 +15,8 @@ import * as copy from '@/constants/copy'
  * how fresh the last ping was.
  */
 export const VehicleCard = ({ vehicle, onPress }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const { destination, plate_number, vehicle_type, capacity, current_street, is_verified, stale, minutesAgo } = vehicle
 	const routeColor = stale ? theme.border.strong : theme.route[1]
 

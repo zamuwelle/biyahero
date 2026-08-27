@@ -10,7 +10,7 @@ import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
 import { fetchRouteForDestination, fetchEta, fetchDestinations } from '@/services/api'
-import * as copy from '@/constants/copy'
+import { useCopy } from '@/constants/copy'
 
 /**
  * 16 · Start Biyahe. The destination declared here is what the commuter search
@@ -18,6 +18,7 @@ import * as copy from '@/constants/copy'
  * rather than of the driver.
  */
 export default function StartTrip() {
+	const copy = useCopy()
 	const router = useRouter()
 	const driver = useStore(s => s.driver)
 	const startTrip = useStore(s => s.startTrip)

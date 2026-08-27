@@ -1,20 +1,23 @@
 import { Pressable, ActivityIndicator, View } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { Txt } from './Txt'
-import { theme } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
-const TONES = {
+/** Built per render so icon/spinner colours follow the active theme. */
+const tonesFor = theme => ({
 	primary: { box: 'bg-brand', text: 'text-fg-on-brand', icon: theme.text.onBrand },
 	secondary: { box: 'bg-surface border-[1.5px] border-line-subtle', text: 'text-fg', icon: theme.icon.primary },
 	danger: { box: 'bg-danger', text: 'text-fg-inverse', icon: theme.text.inverse },
 	ghost: { box: 'bg-transparent', text: 'text-fg-secondary', icon: theme.icon.secondary }
-}
+})
 
 /**
  * 56 px tall, not 48 — the driver's primary actions get tapped in a moving
  * vehicle, and these are the only buttons on their screens.
  */
 export const Button = ({ label, onPress, tone = 'primary', icon, disabled, loading, className = '' }) => {
+	const { theme } = useTheme()
+	const TONES = tonesFor(theme)
 	const t = TONES[tone] ?? TONES.primary
 	const inert = disabled || loading
 

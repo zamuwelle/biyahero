@@ -12,8 +12,9 @@ import { Sheet } from '@/components/ui/Sheet'
 import { Txt } from '@/components/ui/Txt'
 import { Chip } from '@/components/ui/Chip'
 import { useStore } from '@/services/store'
-import { theme, elevation } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { elevation } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /**
  * 04/05 · Map Home, plus 07 (destination set), 09 (all stale) and 10 (no match).
@@ -23,6 +24,8 @@ import * as copy from '@/constants/copy'
  * navigating away from it.
  */
 export default function MapHome() {
+	const copy = useCopy()
+	const { theme, statusBar } = useTheme()
 	const router = useRouter()
 	const insets = useSafeAreaInsets()
 
@@ -60,7 +63,7 @@ export default function MapHome() {
 
 	return (
 		<View className="flex-1 bg-surface-canvas">
-			<StatusBar style="dark" />
+			<StatusBar style={statusBar} />
 			<Map
 				rememberRegion
 				vehicles={vehicles}

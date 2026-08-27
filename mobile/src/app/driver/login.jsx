@@ -7,7 +7,7 @@ import { Header } from '@/components/ui/Header'
 import { Field } from '@/components/ui/Field'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/services/store'
-import * as copy from '@/constants/copy'
+import { useCopy } from '@/constants/copy'
 
 /**
  * Returning driver. Identity is LICENCE + PLATE — no password, no SMS code.
@@ -18,6 +18,7 @@ import * as copy from '@/constants/copy'
  * cannot log in without also knowing the plate.
  */
 export default function DriverLogin() {
+	const copy = useCopy()
 	const router = useRouter()
 	const login = useStore(s => s.login)
 

@@ -1,10 +1,13 @@
 import { View, Pressable } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { Txt } from './Txt'
-import { theme } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /** Settings / profile list row: title over subtitle, chevron on the right. */
-export const Row = ({ title, subtitle, onPress, icon, right, danger = false }) => (
+export const Row = ({ title, subtitle, onPress, icon, right, danger = false }) => {
+	const { theme } = useTheme()
+
+	return (
 	<Pressable
 		onPress={onPress}
 		disabled={!onPress}
@@ -19,3 +22,4 @@ export const Row = ({ title, subtitle, onPress, icon, right, danger = false }) =
 		{right ?? (onPress ? <MaterialIcons name="chevron-right" size={22} color={theme.icon.muted} /> : null)}
 	</Pressable>
 )
+}

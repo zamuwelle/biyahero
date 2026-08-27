@@ -62,8 +62,63 @@ export const night = {
 	route: p.route
 }
 
-/** The shipping theme. Imported directly wherever a raw colour value is needed. */
+/**
+ * Static fallback only. Components that need raw colour values should use
+ * useTheme() from '@/theme/useTheme' so dark mode reaches them; this export
+ * remains for non-React call sites that render before a theme exists.
+ */
 export const theme = day
+
+/**
+ * The flat semantic palette — single source for BOTH sides of theming:
+ * tailwind.config.js turns these keys into `rgb(var(--biya-<key>) / alpha)`
+ * classes, and vars.js emits the per-theme variable values. Add a colour here
+ * and both sides pick it up.
+ */
+export const semanticColors = t => ({
+	'surface': t.surface.default,
+	'surface-canvas': t.surface.canvas,
+	'surface-raised': t.surface.raised,
+	'surface-sunken': t.surface.sunken,
+	'surface-inverse': t.surface.inverse,
+	'fg': t.text.primary,
+	'fg-secondary': t.text.secondary,
+	'fg-inverse': t.text.inverse,
+	'fg-on-brand': t.text.onBrand,
+	'fg-danger': t.text.danger,
+	'fg-success': t.text.success,
+	'brand': t.brand.default,
+	'brand-hover': t.brand.hover,
+	'brand-subtle': t.brand.subtle,
+	'line': t.border.default,
+	'line-subtle': t.border.subtle,
+	'line-strong': t.border.strong,
+	'line-focus': t.border.focus,
+	'icon': t.icon.primary,
+	'icon-secondary': t.icon.secondary,
+	'icon-muted': t.icon.muted,
+	'danger': t.action.dangerBg,
+	'capacity-open-fg': t.capacity.open.fg,
+	'capacity-open-bg': t.capacity.open.bg,
+	'capacity-filling-fg': t.capacity.filling.fg,
+	'capacity-filling-bg': t.capacity.filling.bg,
+	'capacity-full-fg': t.capacity.full.fg,
+	'capacity-full-bg': t.capacity.full.bg,
+	'capacity-stale-fg': t.capacity.stale.fg,
+	'capacity-stale-bg': t.capacity.stale.bg,
+	'route-1': t.route[1],
+	'route-2': t.route[2],
+	'route-3': t.route[3],
+	'route-4': t.route[4],
+	'route-5': t.route[5],
+	'route-6': t.route[6],
+	'map-base': t.map.base,
+	'map-block': t.map.block,
+	'map-road': t.map.road,
+	'map-road-major': t.map.roadMajor,
+	'map-water': t.map.water,
+	'map-park': t.map.park
+})
 
 export const space = { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 32, 8: 40, 9: 48, 10: 64 }
 export const radius = { xs: 6, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 28, full: 999 }

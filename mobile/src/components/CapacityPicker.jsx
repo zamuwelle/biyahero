@@ -1,9 +1,10 @@
 import { View, Pressable } from 'react-native'
 import { Txt } from '@/components/ui/Txt'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
-const OPTIONS = [
+/** Built per render so the segment colours follow the active theme. */
+const optionsFor = theme => [
 	{ value: 'open', filled: 1, fg: theme.capacity.open.fg },
 	{ value: 'filling', filled: 2, fg: theme.capacity.filling.fg },
 	{ value: 'full', filled: 3, fg: theme.capacity.full.fg }
@@ -14,7 +15,12 @@ const OPTIONS = [
  * is encoded in segment COUNT as well as colour — same language the commuter
  * sees on the vehicle card.
  */
-export const CapacityPicker = ({ value, onChange }) => (
+export const CapacityPicker = ({ value, onChange }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
+	const OPTIONS = optionsFor(theme)
+
+	return (
 	<View className="flex-row gap-3">
 		{OPTIONS.map(option => {
 			const active = option.value === value
@@ -47,3 +53,4 @@ export const CapacityPicker = ({ value, onChange }) => (
 		})}
 	</View>
 )
+}

@@ -125,6 +125,34 @@ class TripController extends Controller
         return $this->success($trip->fresh(), 'Tapos na ang biyahe.');
     }
 
+    /** Completed runs, newest first — backs the "Kasaysayan ng biyahe" screen. */
+    public function history(Request $request): JsonResponse
+    {
+        $vehicle = $request->user()->vehicle;
+        if (! $vehicle) {
+            return $this->error('No vehicle registered for this driver.', 404);
+        }
+
+        $trips = Trip::query()
+            ->where('vehicle_id', $vehicle->id)
+            ->whereNotNull('ended_at')
+            ->with('route')
+            ->orderByDesc('started_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (Trip $trip) => [
+                'id' => $trip->id,
+                'destination' => $trip->destination,
+                'route_label' => $trip->route?->label,
+                'started_at' => $trip->started_at?->toIso8601String(),
+                'ended_at' => $trip->ended_at?->toIso8601String(),
+                'duration_min' => $trip->elapsedMinutes(),
+                'distance_km' => (float) $trip->distance_km,
+            ]);
+
+        return $this->success($trips);
+    }
+
     /** Today's totals for the driver home screen. */
     public function summary(Request $request): JsonResponse
     {

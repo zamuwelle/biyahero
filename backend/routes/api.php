@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DestinationController;
 use App\Http\Controllers\EtaController;
 use App\Http\Controllers\TripController;
+use App\Http\Controllers\VehicleController;
 use App\Models\Destination;
 use App\Models\Route as Routes;
 use App\Models\Vehicle;
@@ -68,6 +69,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('me', [AuthController::class, 'me']);
 
     Route::get('/trips/current', [TripController::class, 'current']);
+    Route::get('/trips/history', [TripController::class, 'history']);
+    Route::patch('/vehicle', [VehicleController::class, 'update']);
     Route::get('/trips/summary', [TripController::class, 'summary']);
     Route::post('/trips', [TripController::class, 'store']);
     Route::patch('/trips/{trip}/capacity', [TripController::class, 'updateCapacity']);

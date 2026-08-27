@@ -234,3 +234,58 @@ it('derives driver statistics from real trip rows rather than storing them', fun
         ->and($stats['total_km'])->toBe($actualKm)
         ->and($actualCompleted)->toBeGreaterThan(0);
 });
+
+it('lists only the driver own completed trips, newest first', function () {
+    $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
+    Sanctum::actingAs($driver);
+
+    $rows = $this->getJson('/api/trips/history')->assertOk()->json('data');
+
+    expect($rows)->not->toBeEmpty()
+        ->and(count($rows))->toBeLessThanOrEqual(50);
+
+    $ownTripIds = Trip::where('vehicle_id', $driver->vehicle->id)->whereNotNull('ended_at')->pluck('id');
+    $starts = array_map(fn ($r) => $r['started_at'], $rows);
+    $sorted = $starts;
+    rsort($sorted);
+
+    expect($starts)->toBe($sorted);
+    foreach ($rows as $row) {
+        expect($ownTripIds)->toContain($row['id'])
+            ->and($row)->toHaveKeys(['destination', 'duration_min', 'distance_km']);
+    }
+});
+
+it('requires auth for trip history', function () {
+    $this->getJson('/api/trips/history')->assertUnauthorized();
+});
+
+it('lets a driver edit their vehicle, and the new plate becomes the login credential', function () {
+    registerDriver()->assertCreated();
+    $driver = User::where('license_lookup', app(LicenceIdentity::class)->blindIndex('N01-19-123456'))->firstOrFail();
+    Sanctum::actingAs($driver);
+
+    $this->patchJson('/api/vehicle', [
+        'vehicle_type' => 'ejeep',
+        'plate_number' => 'new 5678',
+        'model' => 'COMET 2023',
+        'body_number' => '99',
+    ])->assertOk();
+
+    $vehicle = $driver->vehicle->fresh();
+    expect($vehicle->vehicle_type)->toBe('ejeep')
+        ->and($vehicle->plate_number)->toBe('NEW 5678');
+
+    // The plate is half the login credential: old stops working, new works.
+    test()->postJson('/api/login', ['license_no' => 'N01-19-123456', 'plate_number' => 'TST 1234'])->assertStatus(404);
+    test()->postJson('/api/login', ['license_no' => 'N01-19-123456', 'plate_number' => 'new 5678'])->assertOk();
+});
+
+it('rejects a vehicle edit with an unknown class or no auth', function () {
+    $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
+
+    $this->patchJson('/api/vehicle', ['vehicle_type' => 'jeepney', 'plate_number' => 'X'])->assertUnauthorized();
+
+    Sanctum::actingAs($driver);
+    $this->patchJson('/api/vehicle', ['vehicle_type' => 'tricycle', 'plate_number' => 'ABC 123'])->assertStatus(422);
+});

@@ -4,14 +4,16 @@ import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Txt } from '@/components/ui/Txt'
 import { LogoMark } from '@/components/LogoMark'
-import { theme } from '@/theme/tokens'
-import * as copy from '@/constants/copy'
+import { useTheme } from '@/theme/useTheme'
+import { useCopy } from '@/constants/copy'
 
 /**
  * 01 · Splash. Full Signal Yellow — the one screen that is all brand.
  * Shown while fonts load and the stored role/session is restored.
  */
 export const Splash = () => {
+	const copy = useCopy()
+	const { theme } = useTheme()
 	const progress = useRef(new Animated.Value(0)).current
 
 	useEffect(() => {
