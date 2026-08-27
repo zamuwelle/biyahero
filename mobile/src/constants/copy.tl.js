@@ -94,6 +94,7 @@ export const vehicle = {
 	verifiedDriver: years => `Beripikadong drayber · ${years} taon sa ruta`,
 	/** Straight-line distance — honest now, because the commuter opted in. */
 	away: m => (m < 1000 ? `${m} m ang layo sa iyo` : `${(m / 1000).toFixed(1)} km ang layo sa iyo`),
+	nearest: 'Pinakamalapit sa iyo',
 	staleTitle: 'Huling alam na posisyon',
 	staleBody: 'Walang live na GPS. Ipinapakita ang oras kung kailan huling nakita.'
 }

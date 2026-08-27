@@ -191,8 +191,10 @@ export const useStore = create((set, get) => ({
 			)
 		} catch (e) {
 			// Surfacing beats a silently empty map — this is why the dot exists.
+			// Clear the seed fix too: a lingering myLocation with the toggle off
+			// would keep distance-sorting the list to a frozen coordinate.
 			get().showToast(`${getCopy().common.genericError} (${e?.message ?? 'location'})`)
-			set({ myLocationOn: false })
+			set({ myLocation: null, myLocationOn: false })
 			return false
 		}
 

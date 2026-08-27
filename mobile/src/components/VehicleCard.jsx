@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { View, Pressable } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { Txt } from '@/components/ui/Txt'
@@ -15,7 +16,7 @@ import { useCopy } from '@/constants/copy'
  * crosshair; it is computed on-device and the position never leaves the phone.
  * Still no ETA — traffic makes any minutes figure invented.
  */
-export const VehicleCard = ({ vehicle, onPress }) => {
+export const VehicleCard = memo(({ vehicle, onPress, nearest = false }) => {
 	const copy = useCopy()
 	const myLocation = useStore(s => s.myLocation)
 	const away = vehicle.position ? distanceM(myLocation, vehicle.position) : null
@@ -25,7 +26,7 @@ export const VehicleCard = ({ vehicle, onPress }) => {
 
 	return (
 		<Pressable
-			onPress={onPress}
+			onPress={() => onPress?.(vehicle)}
 			accessibilityRole="button"
 			accessibilityLabel={`${destination}, ${plate_number}`}
 			className={`flex-row items-start gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-[14px] active:opacity-80 ${stale ? 'opacity-75' : ''}`}
@@ -52,6 +53,10 @@ export const VehicleCard = ({ vehicle, onPress }) => {
 						{stale ? copy.vehicle.lastOnStreet(current_street) : copy.vehicle.onStreet(current_street)}
 					</Txt>
 				)}
+
+				{nearest && (
+					<Txt variant="caption" className="text-capacity-open-fg">{copy.vehicle.nearest}</Txt>
+				)}
 			</View>
 
 			<View className="w-[84px] items-end gap-1">
@@ -62,4 +67,19 @@ export const VehicleCard = ({ vehicle, onPress }) => {
 			</View>
 		</Pressable>
 	)
-}
+}, (prev, next) =>
+	// A poll rebuilds every vehicle object; only these fields reach pixels.
+	// myLocation comes from the store subscription, untouched by this memo.
+	prev.nearest === next.nearest &&
+	prev.onPress === next.onPress &&
+	prev.vehicle.destination === next.vehicle.destination &&
+	prev.vehicle.plate_number === next.vehicle.plate_number &&
+	prev.vehicle.vehicle_type === next.vehicle.vehicle_type &&
+	prev.vehicle.capacity === next.vehicle.capacity &&
+	prev.vehicle.current_street === next.vehicle.current_street &&
+	prev.vehicle.is_verified === next.vehicle.is_verified &&
+	prev.vehicle.stale === next.vehicle.stale &&
+	prev.vehicle.minutesAgo === next.vehicle.minutesAgo &&
+	prev.vehicle.position?.latitude === next.vehicle.position?.latitude &&
+	prev.vehicle.position?.longitude === next.vehicle.position?.longitude
+)

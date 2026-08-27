@@ -13,7 +13,7 @@ const SPRING = { damping: 20, stiffness: 180, mass: 0.6 }
  * buong listahan"). Built on the Reanimated already in the project rather than
  * pulling in a sheet library for two snap points.
  */
-export const Sheet = ({ children, peekHeight = 320, heightRatio = 0.86, onExpandedChange }) => {
+export const Sheet = ({ children, head = null, peekHeight = 320, heightRatio = 0.86, onExpandedChange }) => {
 	const { height: screenHeight } = useWindowDimensions()
 	const insets = useSafeAreaInsets()
 
@@ -26,6 +26,11 @@ export const Sheet = ({ children, peekHeight = 320, heightRatio = 0.86, onExpand
 	const pan = useMemo(
 		() =>
 			Gesture.Pan()
+				// The head band holds tappable chips: only a clearly vertical drag
+				// may claim the touch, or a sloppy tap twitches the sheet instead
+				// of applying the filter.
+				.activeOffsetY([-10, 10])
+				.failOffsetX([-15, 15])
 				.onStart(() => {
 					startY.value = translateY.value
 				})
@@ -53,9 +58,14 @@ export const Sheet = ({ children, peekHeight = 320, heightRatio = 0.86, onExpand
 			]}
 			className="rounded-t-2xl bg-surface"
 		>
+			{/* Everything above the scrolling list drags the sheet — a 5px grabber
+			    alone is a target nobody hits. Pass the static header as `head`. */}
 			<GestureDetector gesture={pan}>
-				<View className="items-center pb-1 pt-[10px]">
-					<View className="h-[5px] w-10 rounded-[3px] bg-line" />
+				<View>
+					<View className="items-center pb-1 pt-[10px]">
+						<View className="h-[5px] w-10 rounded-[3px] bg-line" />
+					</View>
+					{!!head && <View className="px-6">{head}</View>}
 				</View>
 			</GestureDetector>
 			<View className="flex-1 px-6">{children}</View>

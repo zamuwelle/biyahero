@@ -89,6 +89,7 @@ export const vehicle = {
 	lastOnStreet: street => `Last seen on ${street}`,
 	verifiedDriver: years => `Verified driver · ${years} year${years === 1 ? '' : 's'} on the route`,
 	away: m => (m < 1000 ? `${m} m away from you` : `${(m / 1000).toFixed(1)} km away from you`),
+	nearest: 'Closest to you',
 	staleTitle: 'Last known position',
 	staleBody: 'No live GPS. Showing when this vehicle was last seen.'
 }

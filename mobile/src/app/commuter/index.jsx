@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { distanceM } from '@/services/geo'
 import { View, ScrollView, Pressable } from 'react-native'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -92,10 +93,25 @@ export default function MapHome() {
 		[destination, vehicles, destinationPin]
 	)
 
-	const openVehicle = vehicle => {
+	// Stable identity: memoised pins and cards compare onSelect/onPress by
+	// reference, so an inline arrow here would defeat them every poll.
+	const openVehicle = useCallback(vehicle => {
 		selectVehicle(vehicle.id)
 		router.push(`/commuter/vehicle/${vehicle.id}`)
-	}
+	}, [selectVehicle, router])
+
+	// With the blue dot on, the list answers "which ride reaches me first" —
+	// live vehicles nearest-first, stale ones after (their "position" is only
+	// where they were last seen). Distances are ranked in 100 m buckets with an
+	// id tie-break so GPS jitter and 8 s hops don't shuffle cards under the
+	// user's finger. Off (or failed — the watcher can die after a seed fix, so
+	// myLocation alone is not proof), the server's freshest-ping order stands.
+	const located = myLocationOn && !!myLocation
+	const listVehicles = useMemo(() => {
+		if (!located) return vehicles
+		const rank = v => Math.round((distanceM(myLocation, v.position) ?? Infinity) / 100)
+		return [...vehicles].sort((a, b) => (a.stale - b.stale) || (rank(a) - rank(b)) || (a.id - b.id))
+	}, [vehicles, located, myLocation])
 
 	return (
 		<View className="flex-1 bg-surface-canvas">
@@ -144,31 +160,34 @@ export default function MapHome() {
 				<MaterialIcons name={myLocationOn ? 'my-location' : 'location-searching'} size={24} color={myLocationOn ? '#1A73E8' : theme.icon.secondary} />
 			</Pressable>
 
-			<Sheet peekHeight={330}>
-				<View className="gap-3 pb-3">
-					<View className="gap-[3px]">
-						<Txt variant="headingM">
-							{destination
-								? copy.search.resultsTitle(vehicles.length, destination.name)
-								: copy.mapHome.activeCount(vehicles.length)}
-						</Txt>
-						<Txt variant="caption" className="text-fg-secondary">
-							{destination ? copy.search.resultsSubtitle(destination.name) : myLocationOn ? copy.mapHome.updateNoteLocated : copy.mapHome.updateNote}
-						</Txt>
-					</View>
+			<Sheet
+				peekHeight={330}
+				head={
+					<View className="gap-3 pb-3">
+						<View className="gap-[3px]">
+							<Txt variant="headingM">
+								{destination
+									? copy.search.resultsTitle(vehicles.length, destination.name)
+									: copy.mapHome.activeCount(vehicles.length)}
+							</Txt>
+							<Txt variant="caption" className="text-fg-secondary">
+								{destination ? copy.search.resultsSubtitle(destination.name) : myLocationOn ? copy.mapHome.updateNoteLocated : copy.mapHome.updateNote}
+							</Txt>
+						</View>
 
-					<View className="flex-row flex-wrap gap-2">
-						{copy.mapHome.filters.map(f => (
-							<Chip
-								key={f.key}
-								label={f.label}
-								active={vehicleFilter === f.key}
-								onPress={() => setVehicleFilter(f.key)}
-							/>
-						))}
+						<View className="flex-row flex-wrap gap-2">
+							{copy.mapHome.filters.map(f => (
+								<Chip
+									key={f.key}
+									label={f.label}
+									active={vehicleFilter === f.key}
+									onPress={() => setVehicleFilter(f.key)}
+								/>
+							))}
+						</View>
 					</View>
-				</View>
-
+				}
+			>
 				{allStale && (
 					<View className="mb-3 flex-row items-center gap-3 rounded-lg bg-capacity-stale-bg p-3">
 						<MaterialIcons name="signal-wifi-statusbar-null" size={20} color={theme.capacity.stale.fg} />
@@ -187,7 +206,16 @@ export default function MapHome() {
 							body={destination ? copy.search.emptyBody : copy.search.noneActiveBody}
 						/>
 					) : (
-						vehicles.map(v => <VehicleCard key={v.id} vehicle={v} onPress={() => openVehicle(v)} />)
+						listVehicles.map((v, i) => (
+							<VehicleCard
+								key={v.id}
+								vehicle={v}
+								onPress={openVehicle}
+								// Never on a stale card — "closest" must not assert live
+								// proximity from a minutes-old last-seen position.
+								nearest={i === 0 && located && !!v.position && !v.stale}
+							/>
+						))
 					)}
 				</ScrollView>
 			</Sheet>

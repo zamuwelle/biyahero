@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
@@ -28,22 +28,46 @@ const DEFAULT_REGION = {
  */
 const REGION_KEY = 'biyahero.mapRegion'
 
-const VehiclePin = ({ vehicle, selected, onPress }) => {
-	const { theme } = useTheme()
+/**
+ * Marker whose view tracking stays on through a generous settle window, then
+ * freezes. While tracksViewChanges is true Android re-rasterises the marker
+ * continuously — with a whole fleet that is real GPU work every frame. But
+ * frozen too early it snapshots a blank view (fonts and SVGs land late on a
+ * cold start; a 900ms freeze lost that race on device). So: track for
+ * SETTLE_MS after mount, freeze, and re-open the window whenever something
+ * that changes the marker's pixels changes (`redrawKey`). Position changes
+ * move the frozen bitmap — they need no window.
+ */
+const SETTLE_MS = 5000
+
+const SettledMarker = ({ redrawKey, children, ...markerProps }) => {
+	const [tracking, setTracking] = useState(true)
+
+	useEffect(() => {
+		setTracking(true)
+		const timer = setTimeout(() => setTracking(false), SETTLE_MS)
+		return () => clearTimeout(timer)
+	}, [redrawKey])
 
 	return (
-	<Marker
+		<Marker tracksViewChanges={tracking} {...markerProps}>
+			{children}
+		</Marker>
+	)
+}
+
+const VehiclePin = memo(({ vehicle, selected, onSelect }) => {
+	const { theme, scheme } = useTheme()
+
+	return (
+	<SettledMarker
 		coordinate={vehicle.position}
-		onPress={onPress}
+		onPress={() => onSelect?.(vehicle)}
 		anchor={{ x: 0.5, y: 0.5 }}
 		// Above the destination pin (60): when a vehicle arrives, the live
 		// thing wins the pixels. The commuter's own dot (100) tops both.
 		zIndex={selected ? 80 : 70}
-		// Permanently true. Android snapshots custom marker views, and every
-		// timed freeze-after-mount heuristic lost the race on cold start,
-		// leaving an empty map. With ~a dozen markers the re-snapshot cost is
-		// nothing; an invisible fleet is everything.
-		tracksViewChanges={true}
+		redrawKey={`${vehicle.vehicle_type}|${vehicle.stale}|${selected}|${scheme}`}
 		accessibilityLabel={`${vehicle.destination}, ${vehicle.plate_number}`}
 	>
 		<View
@@ -64,9 +88,22 @@ const VehiclePin = ({ vehicle, selected, onPress }) => {
 				color={vehicle.stale ? theme.icon.muted : theme.icon.primary}
 			/>
 		</View>
-	</Marker>
+	</SettledMarker>
 	)
-}
+}, (prev, next) =>
+	// The fleet re-renders every 8 s poll with fresh object identities; only
+	// these fields change any pixel or behaviour of a pin.
+	prev.selected === next.selected &&
+	prev.onSelect === next.onSelect &&
+	prev.vehicle.stale === next.vehicle.stale &&
+	prev.vehicle.vehicle_type === next.vehicle.vehicle_type &&
+	// destination/plate reach the accessibilityLabel, not the pixels — but a
+	// screen reader must not keep announcing last trip's destination.
+	prev.vehicle.destination === next.vehicle.destination &&
+	prev.vehicle.plate_number === next.vehicle.plate_number &&
+	prev.vehicle.position?.latitude === next.vehicle.position?.latitude &&
+	prev.vehicle.position?.longitude === next.vehicle.position?.longitude
+)
 
 /**
  * Pin for where a trip (or a search) is headed — "Papuntang Tarlac City" on a
@@ -77,13 +114,13 @@ const VehiclePin = ({ vehicle, selected, onPress }) => {
  * legible over dark roads; the tip marks the exact spot.
  */
 const DestinationPin = ({ pin }) => {
-	const { theme } = useTheme()
+	const { theme, scheme } = useTheme()
 
 	return (
-		<Marker
+		<SettledMarker
 			coordinate={pin}
 			anchor={{ x: 0.5, y: 1 }}
-			tracksViewChanges={true}
+			redrawKey={scheme}
 			zIndex={60}
 			accessibilityLabel={pin.label}
 		>
@@ -91,7 +128,7 @@ const DestinationPin = ({ pin }) => {
 				<MaterialIcons name="place" size={52} color={theme.surface.default} style={{ position: 'absolute' }} />
 				<MaterialIcons name="place" size={42} color={theme.route[1]} style={{ position: 'absolute', top: 4 }} />
 			</View>
-		</Marker>
+		</SettledMarker>
 	)
 }
 
@@ -166,12 +203,12 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 				{/* Small hollow dot on the route's other end, so the line reads
 				    start → destination rather than as a floating squiggle. */}
 				{!!routeWaypoints?.length && (
-					<Marker coordinate={routeWaypoints[0]} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} zIndex={55}>
+					<SettledMarker coordinate={routeWaypoints[0]} anchor={{ x: 0.5, y: 0.5 }} redrawKey={scheme} zIndex={55}>
 						<View
 							className="h-[14px] w-[14px] rounded-full border-[3px]"
 							style={{ backgroundColor: theme.surface.default, borderColor: theme.route[1] }}
 						/>
-					</Marker>
+					</SettledMarker>
 				)}
 
 				{!!destinationPin && <DestinationPin pin={destinationPin} />}
@@ -179,11 +216,11 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 				{vehicles
 					.filter(v => v.position)
 					.map(v => (
-						<VehiclePin key={v.id} vehicle={v} selected={v.id === selectedId} onPress={() => onSelect?.(v)} />
+						<VehiclePin key={v.id} vehicle={v} selected={v.id === selectedId} onSelect={onSelect} />
 					))}
 
 				{!!myLocation && (
-					<Marker coordinate={myLocation} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} zIndex={100}>
+					<SettledMarker coordinate={myLocation} anchor={{ x: 0.5, y: 0.5 }} redrawKey="static" zIndex={100}>
 						{/* The conventional blue dot: halo, white ring, solid core. */}
 						<View className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(26,115,232,0.18)' }}>
 							<View
@@ -191,7 +228,7 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 								style={{ backgroundColor: '#1A73E8', borderColor: '#FFFFFF' }}
 							/>
 						</View>
-					</Marker>
+					</SettledMarker>
 				)}
 			</MapView>
 		</View>
