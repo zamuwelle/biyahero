@@ -112,7 +112,18 @@ it('reuses a corridor only when it passes near the driver, else builds a fresh o
 it('accepts a destination pinned on the map instead of typed', function () {
     Http::fake(['nominatim.openstreetmap.org/*' => Http::response(['address' => ['town' => 'Victoria']])]);
 
-    actingDriver();
+    $driver = actingDriver();
+
+    // A namesake row ~550 m from the pin: the name-table fallback would serve
+    // ITS coordinates, so only the trip's own dest_lat/lng can satisfy the
+    // exactness assertions below.
+    Destination::create([
+        'name' => 'Malapit sa palengke',
+        'subtitle' => 'namesake',
+        'lat' => 15.5720,
+        'lng' => 120.6850,
+        'is_popular' => false,
+    ]);
 
     $response = $this->postJson('/api/trips', [
         'destination' => 'Malapit sa palengke',
@@ -129,6 +140,13 @@ it('accepts a destination pinned on the map instead of typed', function () {
     expect($end['lat'])->toBe(15.5680)
         ->and($end['lng'])->toBe(120.6820)
         ->and($response->json('data.destination'))->toBe('Malapit sa palengke');
+
+    // The commuter side must pin EXACTLY where the driver pinned — never a
+    // nearby namesake from the destinations table.
+    $this->getJson('/api/active-vehicles/'.$driver->vehicle->id)
+        ->assertOk()
+        ->assertJsonPath('data.destination_position.lat', 15.568)
+        ->assertJsonPath('data.destination_position.lng', 120.682);
 });
 
 it('reroutes a live trip from the vehicle current position and keeps the run', function () {

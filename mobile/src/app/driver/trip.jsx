@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { View, Pressable, ScrollView } from 'react-native'
 import { Redirect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -9,6 +9,7 @@ import { Txt } from '@/components/ui/Txt'
 import { Button } from '@/components/ui/Button'
 import { CapacityPicker } from '@/components/CapacityPicker'
 import { useStore } from '@/services/store'
+import { remainingRoute } from '@/services/geo'
 import { elevation } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -28,6 +29,7 @@ export default function ActiveTrip() {
 	const setCapacity = useStore(s => s.setCapacity)
 	const endTrip = useStore(s => s.endTrip)
 	const beginReroute = useStore(s => s.beginReroute)
+	const broadcastPosition = useStore(s => s.broadcastPosition)
 
 	const [elapsed, setElapsed] = useState(0)
 
@@ -41,11 +43,24 @@ export default function ActiveTrip() {
 		return () => clearInterval(timer)
 	}, [trip?.started_at])
 
+	// Keyed on the route, not the trip object — a capacity tap rebuilds the
+	// trip and must not yank the camera back with a fresh fitTo identity.
+	const waypoints = useMemo(
+		() => (trip?.route?.waypoints ?? []).map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) })),
+		[trip?.route?.id]
+	)
+
 	if (!driver) return <Redirect href="/driver/vehicle" />
 	if (!trip) return <Redirect href="/driver" />
 
-	const waypoints = (trip.route?.waypoints ?? []).map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))
-	const destinationPin = waypoints.length ? { ...waypoints[waypoints.length - 1], label: trip.destination } : null
+	// The exact target the trip resolved to — pinned spot or place — with the
+	// route's far end as the fallback for older trips.
+	const destinationPin =
+		trip.dest_lat != null
+			? { latitude: Number(trip.dest_lat), longitude: Number(trip.dest_lng), label: trip.destination }
+			: waypoints.length
+				? { ...waypoints[waypoints.length - 1], label: trip.destination }
+				: null
 
 	const finish = async () => {
 		await endTrip()
@@ -55,7 +70,13 @@ export default function ActiveTrip() {
 	return (
 		<View className="flex-1 bg-surface-canvas">
 			<StatusBar style={statusBar} />
-			<Map vehicles={[]} routeWaypoints={waypoints} destinationPin={destinationPin} fitTo={waypoints} />
+			<Map
+				vehicles={[]}
+				routeWaypoints={remainingRoute(broadcastPosition, waypoints, destinationPin)}
+				destinationPin={destinationPin}
+				fitTo={waypoints}
+				myLocation={broadcastPosition}
+			/>
 
 			<View
 				style={{ top: insets.top + 6, ...elevation.float }}

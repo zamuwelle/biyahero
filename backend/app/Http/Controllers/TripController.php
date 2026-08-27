@@ -76,6 +76,8 @@ class TripController extends Controller
             'vehicle_id' => $vehicle->id,
             'route_id' => $resolved['route']->id,
             'destination' => $resolved['destination'],
+            'dest_lat' => $resolved['target']['lat'] ?? null,
+            'dest_lng' => $resolved['target']['lng'] ?? null,
             'capacity' => 'open',
             'started_at' => now(),
         ]);
@@ -125,6 +127,8 @@ class TripController extends Controller
         $trip->update([
             'route_id' => $resolved['route']->id,
             'destination' => $resolved['destination'],
+            'dest_lat' => $resolved['target']['lat'] ?? null,
+            'dest_lng' => $resolved['target']['lng'] ?? null,
         ]);
 
         return $this->success($trip->load('route'), 'Napalitan ang ruta.');

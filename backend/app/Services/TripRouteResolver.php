@@ -27,7 +27,7 @@ class TripRouteResolver
     ) {}
 
     /**
-     * @return array{route: Route, destination: string}|null
+     * @return array{route: Route, destination: string, target: array{lat: float, lng: float}|null}|null
      */
     public function resolve(
         ?int $routeId,
@@ -38,8 +38,18 @@ class TripRouteResolver
         ?float $driverLng,
     ): ?array {
         // An explicit route id is the driver tapping a listed route — honour it.
+        // Its precise target is the route's far end.
         if ($routeId && ($route = Route::find($routeId))) {
-            return ['route' => $route, 'destination' => $destinationText];
+            // Local copy: end() takes a reference, which an Eloquent accessor
+            // cannot provide.
+            $waypoints = $route->waypoints ?? [];
+            $end = $waypoints === [] ? null : end($waypoints);
+
+            return [
+                'route' => $route,
+                'destination' => $destinationText,
+                'target' => $end ? ['lat' => (float) $end['lat'], 'lng' => (float) $end['lng']] : null,
+            ];
         }
 
         // No driver fix means no way to know which corridor they are on and no
@@ -58,13 +68,16 @@ class TripRouteResolver
         // whether the corridor is reused or freshly built.
         $target['name'] = $this->ensureDestination($target);
 
+        $point = ['lat' => $target['lat'], 'lng' => $target['lng']];
+
         if ($route = $this->reusableRoute($target, $driverLat, $driverLng)) {
-            return ['route' => $route, 'destination' => $target['name']];
+            return ['route' => $route, 'destination' => $target['name'], 'target' => $point];
         }
 
         return [
             'route' => $this->createRoute($driverLat, $driverLng, $target),
             'destination' => $target['name'],
+            'target' => $point,
         ];
     }
 

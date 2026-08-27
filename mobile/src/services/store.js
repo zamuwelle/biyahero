@@ -12,10 +12,38 @@ const MAX_RECENT = 3
 
 let pollTimer = null
 let broadcastWatcher = null
+let broadcastGuard = null
 let myLocationWatcher = null
 let lastNearId = null
 let toastTimer = null
 let lastStreetLookup = 0
+
+/**
+ * The broadcast watcher itself: streams the driver's fix to the server every
+ * ping interval and mirrors it into the store for the driver's own map.
+ */
+const startBroadcastWatcher = (tripId, get, set) =>
+	Location.watchPositionAsync(
+		{ accuracy: Location.Accuracy.High, timeInterval: PING_INTERVAL_MS, distanceInterval: 20 },
+		async loc => {
+			if (!loc?.coords) return
+			const { latitude, longitude } = loc.coords
+			set({ broadcastPosition: { latitude, longitude } })
+
+			let street
+			if (Date.now() - lastStreetLookup > STREET_LOOKUP_INTERVAL_MS) {
+				lastStreetLookup = Date.now()
+				try {
+					const [place] = await Location.reverseGeocodeAsync({ latitude, longitude })
+					street = place?.street || place?.name || place?.district || undefined
+				} catch {
+					// A failed lookup just means the card keeps the previous street.
+				}
+			}
+
+			api.pingTrip(tripId, { latitude, longitude, street }).catch(() => {})
+		}
+	)
 
 /**
  * One GPS fix, cached-first. High accuracy, never Balanced — the network
@@ -80,7 +108,14 @@ export const useStore = create((set, get) => ({
 					set({ driver })
 					await AsyncStorage.setItem(KEYS.driver, JSON.stringify(driver))
 					const trip = await api.fetchCurrentTrip().catch(() => null)
-					if (trip) set({ trip, isBroadcasting: true })
+					if (trip) {
+						set({ trip, isBroadcasting: true })
+						// The process died mid-trip: without restarting the watcher
+						// the LIVE banner would lie — no pings, no dot, no watchdog.
+						get()
+							.beginBroadcast(trip.id)
+							.catch(() => set({ isBroadcasting: false }))
+					}
 				} catch (e) {
 					// Only a REJECTED token ends the session. A network failure must
 					// not log the driver out — that turns every dead spot into a
@@ -387,29 +422,29 @@ export const useStore = create((set, get) => ({
 	beginReroute: () => set({ rerouting: true }),
 	endReroute: () => set({ rerouting: false }),
 
+	/** The driver's own live fix — their map draws from it, navigation-style. */
+	broadcastPosition: null,
+
 	beginBroadcast: async tripId => {
 		if (broadcastWatcher) broadcastWatcher.remove()
+		if (broadcastGuard) clearInterval(broadcastGuard)
 
-		broadcastWatcher = await Location.watchPositionAsync(
-			{ accuracy: Location.Accuracy.High, timeInterval: PING_INTERVAL_MS, distanceInterval: 20 },
-			async loc => {
-				if (!loc?.coords) return
-				const { latitude, longitude } = loc.coords
+		// The driver's GPS is the only thing commuters can track. If Location
+		// gets switched off mid-trip the watcher just goes silent, so keep
+		// telling the driver until it is back on.
+		broadcastGuard = setInterval(async () => {
+			const servicesOn = await Location.hasServicesEnabledAsync().catch(() => false)
+			if (!servicesOn) get().showToast(getCopy().driverHome.locationServicesOff)
+		}, 20_000)
 
-				let street
-				if (Date.now() - lastStreetLookup > STREET_LOOKUP_INTERVAL_MS) {
-					lastStreetLookup = Date.now()
-					try {
-						const [place] = await Location.reverseGeocodeAsync({ latitude, longitude })
-						street = place?.street || place?.name || place?.district || undefined
-					} catch {
-						// A failed lookup just means the card keeps the previous street.
-					}
-				}
-
-				api.pingTrip(tripId, { latitude, longitude, street }).catch(() => {})
-			}
-		)
+		try {
+			broadcastWatcher = await startBroadcastWatcher(tripId, get, set)
+		} catch (e) {
+			// A rejected watcher (GPS flipped off mid-start) must not leave the
+			// guard toasting forever with nothing to guard.
+			get().stopBroadcast()
+			throw e
+		}
 	},
 
 	setCapacity: async capacity => {
@@ -436,6 +471,10 @@ export const useStore = create((set, get) => ({
 			broadcastWatcher.remove()
 			broadcastWatcher = null
 		}
-		set({ isBroadcasting: false })
+		if (broadcastGuard) {
+			clearInterval(broadcastGuard)
+			broadcastGuard = null
+		}
+		set({ isBroadcasting: false, broadcastPosition: null })
 	}
 }))

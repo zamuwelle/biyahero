@@ -42,7 +42,12 @@ class ActiveVehicleResource extends JsonResource
             'body_number' => $vehicle->body_number,
 
             'destination' => $trip->destination,
-            'destination_position' => $this->destinationPosition($trip->destination),
+            // The trip's own target is exact — the driver's pinned spot or the
+            // resolved place. The name-table lookup is the fallback for trips
+            // that predate per-trip targets (seeder, simulator).
+            'destination_position' => $trip->dest_lat !== null
+                ? ['lat' => (float) $trip->dest_lat, 'lng' => (float) $trip->dest_lng]
+                : $this->destinationPosition($trip->destination),
             'capacity' => $isStale ? 'unknown' : $trip->capacity,
             'current_street' => $vehicle->current_street,
             'position' => $vehicle->currentPosition(),

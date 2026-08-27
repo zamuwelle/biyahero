@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { distanceM } from '@/services/geo'
+import { distanceM, remainingRoute } from '@/services/geo'
 import { View, ScrollView, Pressable } from 'react-native'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -68,7 +68,12 @@ export default function MapHome() {
 		() => vehicles.find(v => v.id === selectedVehicleId),
 		[vehicles, selectedVehicleId]
 	)
-	const routeWaypoints = selected?.route?.waypoints
+	// Navigation-style: only the part of the route still ahead of the vehicle,
+	// oriented toward where the trip is actually going.
+	const routeWaypoints = useMemo(
+		() => (selected ? remainingRoute(selected.position, selected.route?.waypoints, selected.destinationPosition) : undefined),
+		[selected]
+	)
 
 	// The place the map should name: the selected vehicle's destination first,
 	// otherwise the destination being searched for. Both are public places.

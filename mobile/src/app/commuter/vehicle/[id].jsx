@@ -13,7 +13,7 @@ import { CapacityBadge } from '@/components/CapacityBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { fetchVehicle } from '@/services/api'
 import { useStore } from '@/services/store'
-import { distanceM } from '@/services/geo'
+import { distanceM, remainingRoute } from '@/services/geo'
 import { elevation, VEHICLE_LABELS, PING_INTERVAL_MS } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -123,7 +123,7 @@ export default function VehicleDetail() {
 			<Map
 				vehicles={[vehicle]}
 				selectedId={vehicle.id}
-				routeWaypoints={vehicle.route?.waypoints}
+				routeWaypoints={remainingRoute(vehicle.position, vehicle.route?.waypoints, vehicle.destinationPosition)}
 				destinationPin={destinationPin}
 				fitTo={fitTo}
 				myLocation={myLocation}

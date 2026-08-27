@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Trip extends Model
 {
-    protected $fillable = ['vehicle_id', 'route_id', 'destination', 'capacity', 'started_at', 'ended_at', 'distance_km'];
+    protected $fillable = ['vehicle_id', 'route_id', 'destination', 'dest_lat', 'dest_lng', 'capacity', 'started_at', 'ended_at', 'distance_km'];
 
     protected $casts = [
         'started_at' => 'datetime',

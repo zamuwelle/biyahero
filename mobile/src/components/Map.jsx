@@ -200,17 +200,8 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 					<Polyline coordinates={routeWaypoints} strokeColor={theme.route[1]} strokeWidth={5} />
 				)}
 
-				{/* Small hollow dot on the route's other end, so the line reads
-				    start → destination rather than as a floating squiggle. */}
-				{!!routeWaypoints?.length && (
-					<SettledMarker coordinate={routeWaypoints[0]} anchor={{ x: 0.5, y: 0.5 }} redrawKey={scheme} zIndex={55}>
-						<View
-							className="h-[14px] w-[14px] rounded-full border-[3px]"
-							style={{ backgroundColor: theme.surface.default, borderColor: theme.route[1] }}
-						/>
-					</SettledMarker>
-				)}
-
+				{/* No start dot: routes render navigation-style — the line begins
+				    at the vehicle and is consumed as it travels. */}
 				{!!destinationPin && <DestinationPin pin={destinationPin} />}
 
 				{vehicles
