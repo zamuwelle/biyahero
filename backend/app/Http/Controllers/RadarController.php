@@ -11,20 +11,20 @@ class RadarController extends Controller
 
 	public function index(Request $request)
 	{
-		$validated = request()->validate([
+		$validated = $request->validate([
 			'lat' => 'required|numeric',
 			'lng' => 'required|numeric',
 			'radius_km' => 'required|numeric',
 			'vehicle_type' => 'required|string',
-			'route_id' => 'required|numeric',
+			'route_id' => 'required|integer',
 		]);
 
 		$res = $this->aiRadarService->findNearbyVehicles(
-			 $validated['lat'],
-				$validated['lng'],
-				$validated['radius_km'],
-				$validated['vehicle_type'],
-				$validated['route_id'],
+			(float) $validated['lat'],
+			(float) $validated['lng'],
+			(float) $validated['radius_km'],
+			$validated['vehicle_type'],
+			(int) $validated['route_id'],
 		);
 
 		return response()->json($res);
