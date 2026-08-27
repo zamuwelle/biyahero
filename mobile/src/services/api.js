@@ -148,6 +148,21 @@ export const logoutDriver = () => client.post('/logout').catch(() => {})
 
 export const fetchCurrentTrip = () => client.get('/trips/current').then(res => res.data?.data)
 
+/** Type-ahead for the driver's destination field. Driver-side only. */
+export const searchPlaces = (q, position) =>
+	client
+		.get('/places/search', {
+			params: { q, ...(position ? { lat: position.latitude, lng: position.longitude } : {}) }
+		})
+		.then(res =>
+			(res.data?.data ?? []).map(p => ({
+				name: p.name,
+				subtitle: p.subtitle,
+				known: !!p.known,
+				coords: { latitude: Number(p.lat), longitude: Number(p.lng) }
+			}))
+		)
+
 /** Routes whose corridor passes near the DRIVER — never called commuter-side. */
 export const fetchNearbyRoutes = ({ latitude, longitude }) =>
 	client

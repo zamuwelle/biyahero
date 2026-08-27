@@ -157,7 +157,20 @@ const DestinationPin = ({ pin }) => {
  * figure. Nothing here reads or displays the commuter's own position — there is
  * no myLocation button and no permission request.
  */
-export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, destinationPin, selfVehicle, fitTo, myLocation, locateNonce = 0, rememberRegion = false }) => {
+export const Map = ({
+	vehicles = [],
+	selectedId,
+	onSelect,
+	onMapPress,
+	routeWaypoints,
+	destinationPin,
+	selfVehicle,
+	fitTo,
+	fitKey,
+	myLocation,
+	locateNonce = 0,
+	rememberRegion = false
+}) => {
 	const { theme, scheme } = useTheme()
 	const mapRef = useRef(null)
 	const [initialRegion, setInitialRegion] = useState(rememberRegion ? null : DEFAULT_REGION)
@@ -181,17 +194,30 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 		}
 	}, [locateNonce])
 
-	// When a destination narrows the list, frame the matches instead of leaving
-	// the user to hunt for them on a city-wide view.
+	// Frame the matches ONCE per fitKey — a new search, a new route. The
+	// points array is rebuilt on every 8 s poll, and re-fitting on that would
+	// yank the camera back the moment anyone pans or zooms.
+	const lastFitKey = useRef(null)
 	useEffect(() => {
 		const points = fitTo?.filter(Boolean)
-		if (!mapReady || !points?.length || !mapRef.current) return
 
+		// Nothing to frame — the search was cleared, or its matches have not
+		// arrived yet. Release the key so returning to the SAME destination
+		// frames again instead of being mistaken for the frame still showing.
+		if (!points?.length) {
+			lastFitKey.current = null
+			return
+		}
+
+		if (!mapReady || !mapRef.current) return
+		if (fitKey !== undefined && fitKey === lastFitKey.current) return
+
+		lastFitKey.current = fitKey
 		mapRef.current.fitToCoordinates(points, {
 			edgePadding: { top: 120, right: 80, bottom: 380, left: 80 },
 			animated: true
 		})
-	}, [fitTo, mapReady])
+	}, [fitTo, fitKey, mapReady])
 
 	// Hold the map back until the saved region is known, otherwise it mounts on
 	// the default and visibly jumps.
@@ -205,6 +231,12 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, desti
 				style={{ flex: 1 }}
 				initialRegion={initialRegion}
 				onMapReady={() => setMapReady(true)}
+				// Tapping bare map clears whatever the user was following —
+				// marker taps fire their own handler and never reach this.
+				// POI labels are their own gesture on Android and would
+				// otherwise swallow the tap, so they clear the focus too.
+				onPress={onMapPress}
+				onPoiClick={onMapPress}
 				onRegionChangeComplete={region => {
 					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(region)).catch(() => {})
 				}}

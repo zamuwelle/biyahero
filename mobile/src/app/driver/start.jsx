@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler } from 'react-native'
+import { View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler, Keyboard } from 'react-native'
 import { useRouter } from 'expo-router'
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
-import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes } from '@/services/api'
+import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, searchPlaces } from '@/services/api'
 import { MAP_STYLES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -46,9 +46,18 @@ export default function StartTrip() {
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
 	const [starting, setStarting] = useState(false)
+	const [suggestions, setSuggestions] = useState([])
+	const [searching, setSearching] = useState(false)
+	const [searchFailed, setSearchFailed] = useState(false)
+	// A picked place that Biyahero already serves keeps its route preview —
+	// its exact coordinates ride along without hiding the corridor.
+	const [pickedKnown, setPickedKnown] = useState(false)
 	// Bumped on every manual choice, so a slow reverse geocode from an older
 	// pin confirm can never clobber what the driver picked meanwhile.
 	const chosenRef = useRef(0)
+	// The text a suggestion put in the field — typing again must search, but
+	// the choice itself must not immediately re-open the list.
+	const chosenTextRef = useRef('')
 
 	// The driver's fix seeds everything: the nearby-route list and the point a
 	// new route would start from. Drivers granted location long ago (trips
@@ -80,6 +89,42 @@ export default function StartTrip() {
 
 	// Leaving without submitting must not leave the next visit in reroute mode.
 	useEffect(() => () => endReroute(), [endReroute])
+
+	// Type-ahead: places we already serve first, then anywhere in PH. Debounced
+	// because every keystroke would otherwise hit a rate-limited geocoder.
+	useEffect(() => {
+		const q = destination.trim()
+		if (q.length < 2 || q === chosenTextRef.current) {
+			setSuggestions([])
+			setSearching(false)
+			setSearchFailed(false)
+			return
+		}
+
+		let cancelled = false
+		setSearching(true)
+		const timer = setTimeout(() => {
+			searchPlaces(q, position)
+				.then(found => {
+					if (cancelled) return
+					setSuggestions(found)
+					setSearchFailed(false)
+				})
+				// A dead network is not "walang nahanap" — saying so would send
+				// the driver hunting for a different name that also cannot work.
+				.catch(() => {
+					if (cancelled) return
+					setSuggestions([])
+					setSearchFailed(true)
+				})
+				.finally(() => !cancelled && setSearching(false))
+		}, 400)
+
+		return () => {
+			cancelled = true
+			clearTimeout(timer)
+		}
+	}, [destination, position])
 
 	// Android back while the map picker is open closes the PICKER, not the screen.
 	useEffect(() => {
@@ -116,7 +161,9 @@ export default function StartTrip() {
 			}
 		}
 
-		if (!name || pinned) {
+		// A pinned spot has no corridor to preview — unless it is a place we
+		// already serve, where the exact pin and the known route coexist.
+		if (!name || (pinned && !pickedKnown)) {
 			setRoute(null)
 			setEta(null)
 			return
@@ -142,20 +189,40 @@ export default function StartTrip() {
 			cancelled = true
 			clearTimeout(timer)
 		}
-	}, [destination, selectedRouteId, pinned, driver])
+	}, [destination, selectedRouteId, pinned, pickedKnown, driver])
 
 	const typeDestination = text => {
 		chosenRef.current++
+		chosenTextRef.current = ''
 		setDestination(text)
 		setSelectedRouteId(null)
 		setPinned(null)
+		setPickedKnown(false)
 	}
 
 	const pickNearby = r => {
 		chosenRef.current++
+		chosenTextRef.current = r.destination
 		setDestination(r.destination)
 		setSelectedRouteId(r.id)
 		setPinned(null)
+		setPickedKnown(false)
+		setSuggestions([])
+		// The choice is made — get the keyboard out from over the button.
+		Keyboard.dismiss()
+	}
+
+	// A picked suggestion carries exact coordinates — the same precision as
+	// dropping a pin, which is what makes the commuter's marker land right.
+	const pickPlace = place => {
+		chosenRef.current++
+		chosenTextRef.current = place.name
+		setDestination(place.name)
+		setPinned(place.coords)
+		setPickedKnown(place.known)
+		setSelectedRouteId(null)
+		setSuggestions([])
+		Keyboard.dismiss()
 	}
 
 	const confirmPin = async () => {
@@ -163,14 +230,20 @@ export default function StartTrip() {
 		const token = ++chosenRef.current
 		setPicking(false)
 		setPinned(pickPoint)
+		setPickedKnown(false)
 		setSelectedRouteId(null)
+		setSuggestions([])
 
 		// A human-readable name for the pinned spot — it becomes the trip's
 		// searchable destination, so "Piniling lokasyon" is the last resort.
 		const places = await Location.reverseGeocodeAsync(pickPoint).catch(() => [])
 		if (chosenRef.current !== token) return
 		const place = places?.[0]
-		setDestination(place?.district || place?.city || place?.subregion || copy.startTrip.pinnedFallback)
+		const name = place?.district || place?.city || place?.subregion || copy.startTrip.pinnedFallback
+		// Claim the text as a made choice, or the type-ahead treats the name we
+		// just wrote as fresh typing and re-opens the list over the finished pin.
+		chosenTextRef.current = name
+		setDestination(name)
 	}
 
 	const begin = async () => {
@@ -254,6 +327,41 @@ export default function StartTrip() {
 						onClear={() => typeDestination('')}
 						placeholder={copy.startTrip.destinationPlaceholder}
 					/>
+
+					{!pinned && (searching || suggestions.length > 0) && (
+						<View className="gap-2">
+							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.suggestionsLabel}</Txt>
+							{searching && suggestions.length === 0 && (
+								<Txt variant="caption" className="text-fg-secondary">{copy.startTrip.searching}</Txt>
+							)}
+							{suggestions.map(place => (
+								<Pressable
+									key={`${place.name}-${place.coords.latitude}-${place.coords.longitude}`}
+									onPress={() => pickPlace(place)}
+									accessibilityRole="button"
+									className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-3 active:opacity-80"
+								>
+									<MaterialIcons
+										name={place.known ? 'directions-bus' : 'place'}
+										size={20}
+										color={place.known ? theme.route[1] : theme.icon.secondary}
+									/>
+									<View className="min-w-0 flex-1">
+										<Txt variant="bodyMStrong" numberOfLines={1}>{place.name}</Txt>
+										{!!place.subtitle && (
+											<Txt variant="caption" className="text-fg-secondary" numberOfLines={1}>{place.subtitle}</Txt>
+										)}
+									</View>
+								</Pressable>
+							))}
+						</View>
+					)}
+
+					{!searching && suggestions.length === 0 && destination.trim().length >= 2 && !pinned && !selectedRouteId && (
+						<Txt variant="caption" className="text-fg-secondary">
+							{searchFailed ? copy.startTrip.searchFailed : copy.startTrip.noPlaces}
+						</Txt>
+					)}
 
 					<Pressable
 						onPress={() => {

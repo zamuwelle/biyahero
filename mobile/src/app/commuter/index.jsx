@@ -98,6 +98,15 @@ export default function MapHome() {
 		[destination, vehicles, destinationPin]
 	)
 
+	// Frame once per SET of matches — not per poll, and not just per search.
+	// The filtered list arrives a beat after the destination does (the old
+	// citywide fleet is still in state), and the filter chips narrow it again;
+	// keying on the ids re-frames for those and stays put while they only move.
+	const fitKey = useMemo(
+		() => (destination ? `${destination.name}|${vehicleFilter}|${vehicles.map(v => v.id).join(',')}` : 'none'),
+		[destination, vehicleFilter, vehicles]
+	)
+
 	// Stable identity: memoised pins and cards compare onSelect/onPress by
 	// reference, so an inline arrow here would defeat them every poll.
 	const openVehicle = useCallback(vehicle => {
@@ -126,6 +135,8 @@ export default function MapHome() {
 				vehicles={vehicles}
 				selectedId={selectedVehicleId}
 				onSelect={openVehicle}
+				onMapPress={() => selectVehicle(null)}
+				fitKey={fitKey}
 				routeWaypoints={routeWaypoints}
 				destinationPin={destinationPin}
 				fitTo={fitTo}

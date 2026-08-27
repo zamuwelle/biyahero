@@ -4,6 +4,7 @@ use App\Http\Controllers\ActiveVehicleController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DestinationController;
 use App\Http\Controllers\EtaController;
+use App\Http\Controllers\PlaceController;
 use App\Http\Controllers\TripController;
 use App\Http\Controllers\VehicleController;
 use App\Models\Destination;
@@ -78,6 +79,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/trips', [TripController::class, 'store']);
     Route::patch('/trips/{trip}/route', [TripController::class, 'reroute']);
     Route::patch('/trips/{trip}/capacity', [TripController::class, 'updateCapacity']);
+
+    Route::get('/places/search', [PlaceController::class, 'search']);
 
     // Driver-facing: which routes pass near where I am standing? Lives behind
     // auth on purpose — no commuter-side code may ever send a position.

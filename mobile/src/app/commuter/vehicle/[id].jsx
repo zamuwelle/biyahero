@@ -126,6 +126,7 @@ export default function VehicleDetail() {
 				routeWaypoints={remainingRoute(vehicle.position, vehicle.route?.waypoints, vehicle.destinationPosition)}
 				destinationPin={destinationPin}
 				fitTo={fitTo}
+				fitKey={vehicle.route?.id ?? vehicle.tripId}
 				myLocation={myLocation}
 			/>
 

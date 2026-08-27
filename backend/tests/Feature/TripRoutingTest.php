@@ -225,6 +225,47 @@ it('qualifies a namesake destination instead of stealing its coordinates', funct
     expect((float) $row->lat)->toBe(15.5680);
 });
 
+it('suggests places as the driver types, known destinations first, behind auth', function () {
+    Http::fake([
+        'nominatim.openstreetmap.org/search*' => Http::response([
+            // Far namesake listed FIRST, as Nominatim really does.
+            ['name' => 'Bacong', 'lat' => '9.2500', 'lon' => '123.2900', 'display_name' => 'Bacong, Negros Oriental, Philippines'],
+            ['name' => 'Bacolor', 'lat' => '14.9989', 'lon' => '120.6503', 'display_name' => 'Bacolor, Pampanga, Central Luzon, 2000, Philippines'],
+            // A namesake of the seeded row must not be offered twice.
+            ['name' => 'Baclaran', 'lat' => '14.5340', 'lon' => '120.9967', 'display_name' => 'Baclaran, Parañaque, Metro Manila, Philippines'],
+        ]),
+    ]);
+
+    $this->getJson('/api/places/search?q=bac')->assertUnauthorized();
+
+    actingDriver();
+
+    $rows = $this->getJson('/api/places/search?q=bac&lat='.DRIVER_LAT.'&lng='.DRIVER_LNG)
+        ->assertOk()
+        ->json('data');
+
+    expect($rows)->not->toBeEmpty()
+        // The seeded Baclaran is ours, so it leads and is not duplicated.
+        ->and($rows[0]['name'])->toBe('Baclaran')
+        ->and($rows[0]['known'])->toBeTrue()
+        ->and(collect($rows)->where('name', 'Baclaran')->count())->toBe(1)
+        // Pampanga is next door to this Tarlac driver; Negros is not — the
+        // geocoder's own order must not survive.
+        ->and(collect($rows)->pluck('name')->all())->toContain('Bacolor')
+        ->and(collect($rows)->search(fn (array $r) => $r['name'] === 'Bacolor'))
+        ->toBeLessThan(collect($rows)->search(fn (array $r) => $r['name'] === 'Bacong'));
+
+    foreach ($rows as $row) {
+        expect($row)->toHaveKeys(['name', 'subtitle', 'lat', 'lng', 'known']);
+    }
+});
+
+it('rejects a place search that is too short to mean anything', function () {
+    actingDriver();
+
+    $this->getJson('/api/places/search?q=b')->assertUnprocessable();
+});
+
 it('stops a driver from rerouting another driver trip', function () {
     actingDriver();
 

@@ -75,6 +75,7 @@ export default function ActiveTrip() {
 				routeWaypoints={remainingRoute(broadcastPosition, waypoints, destinationPin)}
 				destinationPin={destinationPin}
 				fitTo={waypoints}
+				fitKey={trip.route?.id ?? trip.id}
 				selfVehicle={{ position: broadcastPosition, vehicle_type: driver?.vehicle?.vehicle_type ?? 'jeepney' }}
 			/>
 
