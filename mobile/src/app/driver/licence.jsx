@@ -13,12 +13,20 @@ import { useStore } from '@/services/store'
 import { theme } from '@/theme/tokens'
 import * as copy from '@/constants/copy'
 
+/** Mirrors the server rule: PH licences are a 3-2-6 pattern. */
+const LICENCE_PATTERN = /^[A-Z]\d{2}-\d{2}-\d{6}$/
+const EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
 /**
- * 13 · Licence Capture — a real photo, taken through a framed viewfinder.
+ * 13 · Licence Capture — step 2 of 2. A real photo through a framed viewfinder.
  *
- * The image is uploaded to a private disk and the registration is left PENDING.
- * Nothing here approves anybody: a person runs `php artisan biyahero:review`,
- * looks at the photo, and decides. Until then the driver cannot start a trip.
+ * The number's SHAPE and expiry are checked, and that is all that can be
+ * checked: LTO publishes no verification API, so nothing confirms the licence
+ * exists or belongs to whoever is holding the phone. Passing both approves the
+ * driver immediately — no queue, no waiting.
+ *
+ * The photo uploads to a private disk and is retained so a person can revoke a
+ * driver afterwards with `php artisan biyahero:review {licence} --revoke`.
  */
 export default function LicenceCapture() {
 	const router = useRouter()
@@ -54,22 +62,26 @@ export default function LicenceCapture() {
 	const submit = async () => {
 		if (!draft.licencePhotoUri) return setError(copy.licence.needPhoto)
 		if (!draft.name.trim()) return setError(copy.licence.invalidName)
-		if (!draft.license_no.trim()) return setError(copy.licence.invalidName)
+		if (!LICENCE_PATTERN.test(draft.license_no.trim().toUpperCase())) return setError(copy.licence.invalidNumber)
+		if (!EXPIRY_PATTERN.test(draft.license_expires_at.trim())) return setError(copy.licence.invalidExpiry)
+		if (new Date(draft.license_expires_at.trim()) <= new Date()) return setError(copy.licence.expiredLicence)
 		setError(null)
 
 		try {
 			await register({
 				name: draft.name.trim(),
-				phone: `+63${draft.phone.replace(/\D/g, '').replace(/^0/, '')}`,
 				vehicle_type: draft.vehicle_type,
 				plate_number: draft.plate_number.trim(),
 				model: draft.model.trim(),
 				body_number: draft.body_number.trim(),
 				license_no: draft.license_no.trim(),
+				license_expires_at: draft.license_expires_at.trim(),
 				licencePhotoUri: draft.licencePhotoUri
 			})
 			reset()
-			router.replace('/driver/pending')
+			// Format and expiry are all that can be checked, and they passed —
+			// so the driver is already approved and can go straight to work.
+			router.replace('/driver')
 		} catch (e) {
 			if (e?.response?.status === 409) {
 				showToast(copy.signUp.alreadyRegistered)
@@ -84,7 +96,11 @@ export default function LicenceCapture() {
 		<Screen>
 			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6 pt-4 gap-6 flex-grow" keyboardShouldPersistTaps="handled">
-					<Header eyebrow={copy.licence.eyebrow} title={copy.licence.title} />
+					<Header
+						eyebrow={copy.licence.eyebrow}
+						title={copy.licence.title}
+						right={<Txt variant="labelS" className="text-fg-secondary">{copy.signUp.step(2, 2)}</Txt>}
+					/>
 
 					<Txt variant="bodyM" className="text-fg-secondary">{copy.licence.body}</Txt>
 
@@ -144,6 +160,15 @@ export default function LicenceCapture() {
 								mono
 								hint={copy.licence.hashNote}
 							/>
+							<Field
+								label={copy.licence.expiryLabel}
+								placeholder={copy.licence.expiryPlaceholder}
+								value={draft.license_expires_at}
+								onChangeText={value => update({ license_expires_at: value })}
+								keyboardType="numbers-and-punctuation"
+								autoCorrect={false}
+								mono
+							/>
 						</View>
 					)}
 
@@ -154,7 +179,7 @@ export default function LicenceCapture() {
 							label={copy.licence.submit}
 							onPress={submit}
 							loading={registering}
-							disabled={!draft.licencePhotoUri || !draft.name.trim() || !draft.license_no.trim()}
+							disabled={!draft.licencePhotoUri || !draft.name.trim() || !draft.license_no.trim() || !draft.license_expires_at.trim()}
 						/>
 						<View className="flex-row items-start gap-2">
 							<MaterialIcons name="info-outline" size={16} color={theme.icon.secondary} />

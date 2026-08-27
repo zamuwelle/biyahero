@@ -159,8 +159,8 @@ export const useStore = create((set, get) => ({
 		}
 	},
 
-	login: async phone => {
-		const data = await api.loginDriver(phone)
+	login: async credentials => {
+		const data = await api.loginDriver(credentials)
 		api.setAuthToken(data.token)
 		await AsyncStorage.setItem(KEYS.token, data.token)
 		set({ driver: data.user })

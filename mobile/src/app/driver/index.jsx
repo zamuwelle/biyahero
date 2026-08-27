@@ -31,7 +31,7 @@ export default function DriverHome() {
 		}, [driver])
 	)
 
-	if (!driver) return <Redirect href="/driver/signup" />
+	if (!driver) return <Redirect href="/driver/vehicle" />
 	// Verification gates the whole driver experience, not just the start button.
 	if (driver.verification_status !== 'approved') return <Redirect href="/driver/pending" />
 	if (trip) return <Redirect href="/driver/trip" />

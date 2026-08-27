@@ -10,7 +10,8 @@ class User extends Authenticatable
     use HasApiTokens;
 
     protected $fillable = [
-        'name', 'phone', 'email', 'password', 'license_no', 'license_hash', 'license_photo_path',
+        'name', 'phone', 'email', 'password',
+        'license_no', 'license_hash', 'license_lookup', 'license_expires_at', 'license_photo_path',
         'is_verified', 'verification_status', 'approved_at', 'rejection_reason',
     ];
 
@@ -18,11 +19,16 @@ class User extends Authenticatable
      * license_* never leaves the server: the number proves registration and the
      * photo is reviewer-only. Neither is ever a display field.
      */
-    protected $hidden = ['password', 'license_no', 'license_hash', 'license_photo_path'];
+    /**
+     * Nothing licence-derived is ever serialised. `license_lookup` is a keyed
+     * HMAC, so leaking it would let anyone confirm a guessed licence number.
+     */
+    protected $hidden = ['password', 'license_no', 'license_hash', 'license_lookup', 'license_photo_path'];
 
     protected $casts = [
         'is_verified' => 'boolean',
         'approved_at' => 'datetime',
+        'license_expires_at' => 'date',
     ];
 
     public function vehicle()
@@ -48,7 +54,13 @@ class User extends Authenticatable
 
     public function isApproved(): bool
     {
-        return $this->verification_status === 'approved';
+        return $this->verification_status === 'approved' && ! $this->licenceHasExpired();
+    }
+
+    /** A licence that lapses after registration must stop the driver working. */
+    public function licenceHasExpired(): bool
+    {
+        return $this->license_expires_at !== null && $this->license_expires_at->isPast();
     }
 
     /*

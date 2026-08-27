@@ -37,7 +37,7 @@ export default function ActiveTrip() {
 		return () => clearInterval(timer)
 	}, [trip?.started_at])
 
-	if (!driver) return <Redirect href="/driver/signup" />
+	if (!driver) return <Redirect href="/driver/vehicle" />
 	if (!trip) return <Redirect href="/driver" />
 
 	const waypoints = (trip.route?.waypoints ?? []).map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))

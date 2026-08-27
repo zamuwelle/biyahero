@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Route;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Services\LicenceIdentity;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -23,6 +24,7 @@ class VehicleSeeder extends Seeder
     public function run(): void
     {
         $routes = Route::pluck('id', 'label');
+        $identity = app(LicenceIdentity::class);
 
         // name, phone, plate, type, model, body, route, years driving
         $fleet = [
@@ -40,15 +42,23 @@ class VehicleSeeder extends Seeder
             ['Fernando Ocampo', '+639175550153', 'ALB 8802', 'bus', 'Hino RK8J 2019', '61', 'Alabang → Buendia', 10],
         ];
 
-        foreach ($fleet as [$name, $phone, $plate, $type, $model, $body, $routeLabel, $years]) {
+        foreach ($fleet as $i => [$name, $phone, $plate, $type, $model, $body, $routeLabel, $years]) {
+            // Real 3-2-6 shape, so these accounts log in through exactly the
+            // same licence + plate path a registered driver uses.
+            $licence = sprintf('N01-19-%06d', 100000 + $i);
+
             $driver = User::create([
                 'name' => $name,
                 'phone' => $phone,
-                'license_hash' => Hash::make('N01-'.substr($phone, -6)),
+                'license_hash' => Hash::make($licence),
+                'license_lookup' => $identity->blindIndex($licence),
+                'license_expires_at' => now()->addYears(3)->toDateString(),
                 'is_verified' => true,
                 'verification_status' => 'approved',
                 'approved_at' => now()->subYears($years),
             ]);
+
+            $this->command?->line(sprintf('  %-18s licence %s  plate %s', $name, $licence, $plate));
 
             // Backdate so yearsOnRoute() returns a real figure computed the same
             // way it will be for a driver who signs up today.

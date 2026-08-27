@@ -7,12 +7,12 @@ import { create } from 'zustand'
  */
 export const useRegistration = create(set => ({
 	name: '',
-	phone: '',
 	vehicle_type: 'jeepney',
 	plate_number: '',
 	model: '',
 	body_number: '',
 	license_no: '',
+	license_expires_at: '',
 	/** Local file URI of the captured licence photo, uploaded on submit. */
 	licencePhotoUri: null,
 
@@ -21,12 +21,12 @@ export const useRegistration = create(set => ({
 	reset: () =>
 		set({
 			name: '',
-			phone: '',
 			vehicle_type: 'jeepney',
 			plate_number: '',
 			model: '',
 			body_number: '',
 			license_no: '',
+			license_expires_at: '',
 			licencePhotoUri: null
 		})
 }))

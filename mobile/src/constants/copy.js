@@ -110,28 +110,28 @@ export const freshness = {
 
 export const signUp = {
 	eyebrow: 'REHISTRO NG DRAYBER',
-	title: 'Magparehistro bilang drayber',
-	body: 'Ang numero mo lang ang gagamitin para sa pag-log in at abiso. Hindi ito ipapakita sa mga pasahero.',
-	phoneLabel: 'Numero ng telepono',
-	phonePrefix: '+63',
-	phonePlaceholder: '917 555 0142',
-	phoneHint: 'Padadalhan ka namin ng 6-digit na code sa SMS.',
-	terms: 'Sa pagpapatuloy, sumasang-ayon ka sa Mga Tuntunin at Patakaran sa Privacy ng Biyahero.',
-	continue: 'Magpatuloy',
-	invalidPhone: 'Kulang ang numero — 10 digit ang kailangan.',
+	step: (n, of) => `Hakbang ${n} ng ${of}`,
 	haveAccount: 'Naka-rehistro ka na? Mag-log in',
-	alreadyRegistered: 'May account na sa numerong ito. Mag-log in na lang.'
+	alreadyRegistered: 'Nakarehistro na ang lisensyang ito. Mag-log in na lang.',
+	terms: 'Sa pagpapatuloy, sumasang-ayon ka sa Mga Tuntunin at Patakaran sa Privacy ng Biyahero.'
 }
 
-/** Returning drivers. There is no password — the phone number is the handle. */
+/**
+ * Returning drivers. Identity is licence + plate: neither is secret alone, but
+ * together they are hard to guess and need no SMS.
+ */
 export const login = {
 	eyebrow: 'PAG-LOG IN',
 	title: 'Mag-log in bilang drayber',
-	body: 'Ilagay ang numerong ginamit mo noong nagparehistro ka.',
-	phoneLabel: 'Numero ng telepono',
+	body: 'Ilagay ang numero ng lisensya at plaka ng sasakyan mo.',
+	licenceLabel: 'NUMERO NG LISENSYA',
+	licencePlaceholder: 'N01-19-123456',
+	plateLabel: 'PLAKA NG SASAKYAN',
+	platePlaceholder: 'NCR 8842',
 	submit: 'Mag-log in',
 	noAccount: 'Wala pang account? Magparehistro',
-	notFound: 'Walang account sa numerong ito.'
+	notFound: 'Hindi tugma ang lisensya at plaka.',
+	hint: 'Walang password at walang SMS code.'
 }
 
 export const vehicleDetails = {
@@ -167,7 +167,16 @@ export const licence = {
 	permissionTitle: 'Kailangan ng access sa camera',
 	permissionBody: 'Ginagamit lang ito para kunan ng larawan ang lisensya mo.',
 	grant: 'Payagan ang camera',
-	reviewNote: 'Susuriin ito ng tao bago ka maaprubahan. Hindi ito awtomatiko.',
+	expiryLabel: 'PETSA NG EXPIRY',
+	expiryPlaceholder: 'YYYY-MM-DD',
+	invalidExpiry: 'Ilagay ang petsa ng expiry (YYYY-MM-DD).',
+	expiredLicence: 'Paso na ang lisensya mo.',
+	invalidNumber: 'Mali ang porma ng numero. Dapat katulad ng N01-19-123456.',
+	/**
+	 * Deliberately does NOT claim the licence was checked against LTO — there is
+	 * no public API to check it against. It says exactly what happens.
+	 */
+	reviewNote: 'Sinusuri namin ang porma at bisa ng numero. Nakaimbak ang larawan kung sakaling may reklamo.',
 	/** Never displayed back to anyone — the design stores a hash, not the number. */
 	hashNote: 'Lisensya: naka-hash, hindi kailanman ipinapakita.'
 }

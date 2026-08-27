@@ -2,6 +2,7 @@
 
 use App\Models\Trip;
 use App\Models\User;
+use App\Services\LicenceIdentity;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -27,132 +28,137 @@ function registerDriver(array $overrides = [])
 {
     return test()->postJson('/api/register', array_merge([
         'name' => 'Juan Dela Cruz',
-        'phone' => '+639998887777',
+        'license_no' => 'N01-19-123456',
+        'license_expires_at' => now()->addYears(2)->toDateString(),
+        'license_photo' => UploadedFile::fake()->image('licence.jpg', 1200, 750),
         'vehicle_type' => 'jeepney',
         'plate_number' => 'tst 1234',
         'model' => 'Sarao 2020',
-        'license_no' => 'N01-19-123456',
-        'license_photo' => UploadedFile::fake()->image('licence.jpg', 1200, 750),
     ], $overrides));
 }
 
-it('registers a driver as PENDING and never self-approves', function () {
+it('registers with licence and plate, and needs no phone number', function () {
     $response = registerDriver()->assertCreated();
 
-    expect($response->json('data.user.verification_status'))->toBe('pending')
-        ->and($response->json('data.user.is_verified'))->toBeFalse()
-        // Plate is normalised — it is a public, painted-on identifier.
-        ->and($response->json('data.user.vehicle.plate_number'))->toBe('TST 1234');
-
-    $driver = User::where('phone', '+639998887777')->firstOrFail();
-    expect($driver->approved_at)->toBeNull();
+    expect($response->json('data.user.vehicle.plate_number'))->toBe('TST 1234')
+        ->and($response->json('data.user.phone'))->toBeNull()
+        ->and($response->json('data.token'))->not->toBeEmpty();
 });
 
-it('requires a licence photo and a licence number', function () {
-    registerDriver(['license_photo' => null])->assertStatus(422);
-    registerDriver(['license_no' => null])->assertStatus(422);
-});
-
-it('stores the licence photo privately and hashes the number', function () {
+it('approves immediately once the number is well formed and unexpired', function () {
     registerDriver()->assertCreated();
 
-    $driver = User::where('phone', '+639998887777')->firstOrFail();
+    $driver = User::where('license_lookup', app(LicenceIdentity::class)->blindIndex('N01-19-123456'))->firstOrFail();
 
-    expect($driver->license_photo_path)->not->toBeNull();
+    expect($driver->verification_status)->toBe('approved')
+        ->and($driver->is_verified)->toBeTrue()
+        ->and($driver->approved_at)->not->toBeNull();
+});
+
+it('rejects a licence number that is not the PH 3-2-6 shape', function () {
+    foreach (['12345', 'ABC-DE-FGHIJK', 'N1-19-123456', 'N01-19-12345'] as $bad) {
+        registerDriver(['license_no' => $bad])->assertStatus(422);
+    }
+});
+
+it('rejects an expired licence', function () {
+    registerDriver(['license_expires_at' => now()->subDay()->toDateString()])->assertStatus(422);
+});
+
+it('still requires a licence photo', function () {
+    registerDriver(['license_photo' => null])->assertStatus(422);
+});
+
+it('stores the photo privately, hashes the number and indexes it blind', function () {
+    registerDriver()->assertCreated();
+
+    $identity = app(LicenceIdentity::class);
+    $driver = User::where('license_lookup', $identity->blindIndex('N01-19-123456'))->firstOrFail();
+
     Storage::assertExists($driver->license_photo_path);
 
-    expect(Hash::check('N01-19-123456', $driver->license_hash))->toBeTrue();
+    expect(Hash::check('N01-19-123456', $driver->license_hash))->toBeTrue()
+        // The blind index must be deterministic but not the number itself.
+        ->and($driver->license_lookup)->not->toContain('N01-19-123456')
+        ->and($driver->license_lookup)->toHaveLength(64);
 });
 
-it('never exposes the licence number, hash or photo path to any client', function () {
+it('never exposes the licence number, hash, blind index or photo path', function () {
     $content = registerDriver()->assertCreated()->getContent();
 
-    expect($content)->not->toContain('N01-19-123456')
-        ->and($content)->not->toContain('license_hash')
-        ->and($content)->not->toContain('license_photo_path');
+    foreach (['N01-19-123456', 'license_hash', 'license_lookup', 'license_photo_path'] as $secret) {
+        expect($content)->not->toContain($secret);
+    }
 });
 
-it('refuses a second registration on the same phone and points at login', function () {
+it('refuses to register the same licence twice and points at login', function () {
     registerDriver()->assertCreated();
 
-    registerDriver()
+    registerDriver(['plate_number' => 'ZZZ 9999'])
         ->assertStatus(409)
-        ->assertJsonPath('message', 'May account na sa numerong ito. Mag-log in na lang.');
+        ->assertJsonPath('message', 'Nakarehistro na ang lisensyang ito. Mag-log in na lang.');
 });
 
-it('lets a registered driver log back in with their phone number', function () {
+it('logs a driver back in with licence and plate, in any formatting', function () {
     registerDriver()->assertCreated();
 
-    $response = $this->postJson('/api/login', ['phone' => '+639998887777'])->assertOk();
+    foreach (['N01-19-123456', 'n01 19 123456', 'n0119123456'] as $variant) {
+        $response = test()->postJson('/api/login', [
+            'license_no' => $variant,
+            'plate_number' => 'tst 1234',
+        ])->assertOk();
 
-    expect($response->json('data.token'))->not->toBeEmpty()
-        ->and($response->json('data.user.verification_status'))->toBe('pending');
+        expect($response->json('data.user.name'))->toBe('Juan Dela Cruz');
+    }
 });
 
-it('blocks an unapproved driver from starting a trip', function () {
+it('refuses login when the plate does not match the licence', function () {
     registerDriver()->assertCreated();
-    $driver = User::where('phone', '+639998887777')->firstOrFail();
 
-    Sanctum::actingAs($driver);
-
-    $this->postJson('/api/trips', ['destination' => 'Baclaran'])->assertForbidden();
-
-    // And they must not be visible to commuters.
-    $shown = collect($this->getJson('/api/active-vehicles')->json('data'))
-        ->firstWhere('plate_number', 'TST 1234');
-    expect($shown)->toBeNull();
+    test()->postJson('/api/login', [
+        'license_no' => 'N01-19-123456',
+        'plate_number' => 'XXX 0000',
+    ])->assertStatus(404);
 });
 
-it('lets a driver work only once a human approves them', function () {
+it('gives the same message for an unknown licence as for a wrong plate', function () {
     registerDriver()->assertCreated();
-    $driver = User::where('phone', '+639998887777')->firstOrFail();
 
-    $this->artisan('biyahero:review', ['phone' => '+639998887777', '--approve' => true])
+    // Distinct messages would make this an oracle for enumerating licences.
+    $wrongPlate = test()->postJson('/api/login', ['license_no' => 'N01-19-123456', 'plate_number' => 'XXX 0000']);
+    $unknown = test()->postJson('/api/login', ['license_no' => 'Z99-99-999999', 'plate_number' => 'TST 1234']);
+
+    expect($wrongPlate->json('message'))->toBe($unknown->json('message'));
+});
+
+it('stops a revoked driver from working and lets them be reinstated', function () {
+    registerDriver()->assertCreated();
+    $driver = User::where('license_lookup', app(LicenceIdentity::class)->blindIndex('N01-19-123456'))->firstOrFail();
+
+    test()->artisan('biyahero:review', ['licence' => 'N01-19-123456', '--revoke' => 'Pekeng lisensya.'])
         ->assertSuccessful();
 
-    $driver->refresh();
-    expect($driver->verification_status)->toBe('approved')
-        ->and($driver->approved_at)->not->toBeNull();
+    Sanctum::actingAs($driver->fresh());
+    test()->postJson('/api/trips', ['destination' => 'Baclaran'])->assertForbidden();
 
-    Sanctum::actingAs($driver);
-    $trip = $this->postJson('/api/trips', ['destination' => 'Baclaran'])->assertCreated();
+    test()->artisan('biyahero:review', ['licence' => 'N01-19-123456', '--reinstate' => true])
+        ->assertSuccessful();
 
-    $this->postJson("/api/trips/{$trip->json('data.id')}/ping", [
-        'lat' => 14.5455, 'lng' => 120.9969, 'street' => 'Taft Ave',
-    ])->assertOk();
-
-    $shown = collect($this->getJson('/api/active-vehicles')->json('data'))
-        ->firstWhere('plate_number', 'TST 1234');
-
-    expect($shown)->not->toBeNull()
-        ->and($shown['current_street'])->toBe('Taft Ave');
+    Sanctum::actingAs($driver->fresh());
+    test()->postJson('/api/trips', ['destination' => 'Baclaran'])->assertCreated();
 });
 
-it('refuses to approve a driver with no licence photo on file', function () {
+it('stops a driver working once their licence lapses', function () {
     registerDriver()->assertCreated();
-    User::where('phone', '+639998887777')->update(['license_photo_path' => null]);
+    $driver = User::where('license_lookup', app(LicenceIdentity::class)->blindIndex('N01-19-123456'))->firstOrFail();
 
-    $this->artisan('biyahero:review', ['phone' => '+639998887777', '--approve' => true])
-        ->assertFailed();
+    // Approved, but the licence has since expired.
+    $driver->forceFill(['license_expires_at' => now()->subDay()])->save();
 
-    expect(User::where('phone', '+639998887777')->value('verification_status'))->toBe('pending');
-});
+    expect($driver->fresh()->isApproved())->toBeFalse();
 
-it('records a rejection reason the driver can see', function () {
-    registerDriver()->assertCreated();
-
-    $this->artisan('biyahero:review', [
-        'phone' => '+639998887777',
-        '--reject' => 'Malabo ang larawan ng lisensya.',
-    ])->assertSuccessful();
-
-    $driver = User::where('phone', '+639998887777')->firstOrFail();
-    Sanctum::actingAs($driver);
-
-    $me = $this->getJson('/api/me')->assertOk();
-
-    expect($me->json('data.verification_status'))->toBe('rejected')
-        ->and($me->json('data.rejection_reason'))->toBe('Malabo ang larawan ng lisensya.');
+    Sanctum::actingAs($driver->fresh());
+    test()->postJson('/api/trips', ['destination' => 'Baclaran'])->assertForbidden();
 });
 
 it('clears the live fix when a trip ends so no stale position lingers', function () {

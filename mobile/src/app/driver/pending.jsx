@@ -76,7 +76,7 @@ export default function VerificationPending() {
 		}, [])
 	)
 
-	if (!driver) return <Redirect href="/driver/signup" />
+	if (!driver) return <Redirect href="/driver/vehicle" />
 
 	const status = driver.verification_status
 	const approved = status === 'approved'
@@ -139,7 +139,7 @@ export default function VerificationPending() {
 
 				<View className="gap-3">
 					{approved && <Button label={copy.driverHome.startTrip} onPress={() => router.replace('/driver')} />}
-					{rejected && <Button label={copy.licence.submit} onPress={() => router.replace('/driver/signup')} />}
+					{rejected && <Button label={copy.licence.submit} onPress={() => router.replace('/driver/vehicle')} />}
 					{!approved && !rejected && (
 						<Button label={copy.pending.refresh} tone="secondary" icon="refresh" onPress={refreshMe} loading={checking} />
 					)}

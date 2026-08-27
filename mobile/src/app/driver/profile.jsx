@@ -22,7 +22,7 @@ export default function DriverProfile() {
 	const driver = useStore(s => s.driver)
 	const logout = useStore(s => s.logout)
 
-	if (!driver) return <Redirect href="/driver/signup" />
+	if (!driver) return <Redirect href="/driver/vehicle" />
 
 	const signOut = async () => {
 		await logout()

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Rules\PhilippineLicence;
+use App\Services\LicenceIdentity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -13,50 +15,64 @@ use Symfony\Component\HttpFoundation\Response;
  * Drivers only. Commuters never authenticate — there is no commuter account,
  * no password and no profile, which is why every commuter route is public.
  *
- * Registration does NOT approve the driver. It records the submission and
- * leaves verification_status at `pending`; a human approves with
- * `php artisan biyahero:review` after looking at the licence photo. Until then
- * the driver cannot start a trip and is invisible to commuters.
+ * Identity is LICENCE + PLATE. Neither is secret on its own (both are visible
+ * on the vehicle and the card), but together they are hard to guess, and it
+ * needs no SMS. There is no password and no OTP.
+ *
+ * Approval is automatic once the licence number is well-formed and unexpired.
+ * That is the only automated check that exists: LTO publishes no verification
+ * API, so nothing confirms the licence is real or belongs to this person. The
+ * photo is retained so a human can revoke a driver after the fact with
+ * `php artisan biyahero:review {licence} --reject="reason"`.
  */
 class AuthController extends Controller
 {
+    public function __construct(private readonly LicenceIdentity $identity) {}
+
     public function register(): JsonResponse
     {
         $validated = request()->validate([
             'name' => 'required|string|max:100',
-            'phone' => 'required|string|max:20',
+            'license_no' => ['required', 'string', 'max:30', new PhilippineLicence],
+            'license_expires_at' => 'required|date|after:today',
+            'license_photo' => 'required|image|max:8192',
             'vehicle_type' => 'required|string|in:jeepney,ejeep,bus,uv_express',
             'plate_number' => 'required|string|max:20',
             'model' => 'nullable|string|max:50',
             'body_number' => 'nullable|string|max:20',
-            'license_no' => 'required|string|max:30',
-            'license_photo' => 'required|image|max:8192',
+            'phone' => 'nullable|string|max:20',
+        ], [
+            'license_expires_at.after' => 'Paso na ang lisensya mo.',
         ]);
 
-        if (User::where('phone', $validated['phone'])->exists()) {
-            return $this->error('May account na sa numerong ito. Mag-log in na lang.', 409);
+        $lookup = $this->identity->blindIndex($validated['license_no']);
+
+        if (User::where('license_lookup', $lookup)->exists()) {
+            return $this->error('Nakarehistro na ang lisensyang ito. Mag-log in na lang.', 409);
         }
 
-        $user = DB::transaction(function () use ($validated) {
-            // Private disk: the photo is evidence for a reviewer, never public.
+        $user = DB::transaction(function () use ($validated, $lookup) {
+            // Private disk: the photo is evidence for a later dispute, never public.
             $path = request()->file('license_photo')->store('licences');
 
             $user = User::create([
                 'name' => $validated['name'],
-                'phone' => $validated['phone'],
-                // Hashed on the way in and hidden on the way out — the number
-                // proves registration, it is never a display field.
-                'license_hash' => Hash::make($validated['license_no']),
+                'phone' => $validated['phone'] ?? null,
+                'license_hash' => Hash::make($this->identity->normalise($validated['license_no'])),
+                'license_lookup' => $lookup,
+                'license_expires_at' => $validated['license_expires_at'],
                 'license_photo_path' => $path,
-                'is_verified' => false,
-                'verification_status' => 'pending',
+                // Format and expiry passed, which is everything we can check.
+                'is_verified' => true,
+                'verification_status' => 'approved',
+                'approved_at' => now(),
             ]);
 
             Vehicle::create([
                 'user_id' => $user->id,
                 'vehicle_code' => strtoupper(substr($validated['vehicle_type'], 0, 4)).'-'.str_pad((string) $user->id, 3, '0', STR_PAD_LEFT),
                 'vehicle_type' => $validated['vehicle_type'],
-                'plate_number' => strtoupper($validated['plate_number']),
+                'plate_number' => $this->normalisePlate($validated['plate_number']),
                 'model' => $validated['model'] ?? null,
                 'body_number' => $validated['body_number'] ?? null,
                 'route_id' => 1,
@@ -68,17 +84,27 @@ class AuthController extends Controller
         return $this->success([
             'user' => $this->profile($user->fresh()),
             'token' => $user->createToken('auth-token')->plainTextToken,
-        ], 'Naipadala ang rehistro. Aabisuhan ka namin kapag aprubado na.', 201);
+        ], 'Aprubado ka na. Puwede ka nang magbiyahe.', 201);
     }
 
     public function login(): JsonResponse
     {
-        $validated = request()->validate(['phone' => 'required|string|max:20']);
+        $validated = request()->validate([
+            'license_no' => 'required|string|max:30',
+            'plate_number' => 'required|string|max:20',
+        ]);
 
-        $user = User::where('phone', $validated['phone'])->first();
+        $user = User::where('license_lookup', $this->identity->blindIndex($validated['license_no']))
+            ->with('vehicle')
+            ->first();
 
-        if (! $user) {
-            return $this->error('Walang account sa numerong ito.', 404);
+        // One message for both failures: revealing which half was wrong would
+        // turn this into an oracle for enumerating licence numbers.
+        $plateMatches = $user?->vehicle
+            && $user->vehicle->plate_number === $this->normalisePlate($validated['plate_number']);
+
+        if (! $plateMatches) {
+            return $this->error('Hindi tugma ang lisensya at plaka.', 404);
         }
 
         return $this->success([
@@ -97,6 +123,12 @@ class AuthController extends Controller
         request()->user()->currentAccessToken()->delete();
 
         return response()->noContent();
+    }
+
+    /** Plates are painted on the vehicle; spacing varies, the characters do not. */
+    private function normalisePlate(string $plate): string
+    {
+        return strtoupper(preg_replace('/\s+/', ' ', trim($plate)) ?? '');
     }
 
     /**

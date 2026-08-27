@@ -136,8 +136,8 @@ export const registerDriver = ({ licencePhotoUri, ...fields }) => {
 		.then(res => res.data?.data)
 }
 
-export const loginDriver = phone =>
-	client.post('/login', { phone }).then(res => res.data?.data)
+export const loginDriver = credentials =>
+	client.post('/login', credentials).then(res => res.data?.data)
 
 export const fetchMe = () => client.get('/me').then(res => res.data?.data)
 

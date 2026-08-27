@@ -28,7 +28,11 @@ export default function VehicleDetails() {
 		<Screen>
 			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6 pt-4 gap-8 flex-grow" keyboardShouldPersistTaps="handled">
-					<Header eyebrow={copy.vehicleDetails.eyebrow} title={copy.vehicleDetails.title} />
+					<Header
+						eyebrow={copy.vehicleDetails.eyebrow}
+						title={copy.vehicleDetails.title}
+						right={<Txt variant="labelS" className="text-fg-secondary">{copy.signUp.step(1, 2)}</Txt>}
+					/>
 
 					<Txt variant="bodyM" className="text-fg-secondary">{copy.vehicleDetails.body}</Txt>
 
@@ -84,7 +88,14 @@ export default function VehicleDetails() {
 					/>
 
 					<View className="flex-1" />
-					<Button label={copy.vehicleDetails.continue} onPress={next} disabled={!plate_number.trim()} />
+
+					<View className="gap-4">
+						<Button label={copy.vehicleDetails.continue} onPress={next} disabled={!plate_number.trim()} />
+						<Pressable onPress={() => router.push('/driver/login')} className="items-center py-1 active:opacity-70">
+							<Txt variant="bodyMStrong" className="text-fg-secondary">{copy.signUp.haveAccount}</Txt>
+						</Pressable>
+						<Txt variant="caption" className="text-center text-fg-secondary">{copy.signUp.terms}</Txt>
+					</View>
 				</ScrollView>
 			</KeyboardAvoidingView>
 		</Screen>
