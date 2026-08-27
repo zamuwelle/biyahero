@@ -17,6 +17,28 @@ let lastNearId = null
 let toastTimer = null
 let lastStreetLookup = 0
 
+/**
+ * One GPS fix, cached-first. High accuracy, never Balanced — the network
+ * provider hangs forever on some devices (this MediaTek included).
+ */
+const currentFix = async () => {
+	try {
+		// maxAge matters: an unbounded cached fix from another city hours ago is
+		// exactly the wrong-corridor bug this position exists to prevent.
+		const seed = await Location.getLastKnownPositionAsync({ maxAge: 60_000 })
+		if (seed?.coords) return { latitude: seed.coords.latitude, longitude: seed.coords.longitude }
+		// Race a timeout: getCurrentPositionAsync can hang on a cold GPS, and a
+		// spinner that never resolves is worse than the server's clear refusal.
+		const fix = await Promise.race([
+			Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+			new Promise(resolve => setTimeout(() => resolve(null), 12_000))
+		])
+		return fix?.coords ? { latitude: fix.coords.latitude, longitude: fix.coords.longitude } : null
+	} catch {
+		return null
+	}
+}
+
 /** Reverse-geocode sparingly — it is rate-limited and the street rarely changes. */
 const STREET_LOOKUP_INTERVAL_MS = 30_000
 
@@ -315,7 +337,7 @@ export const useStore = create((set, get) => ({
 	 * Starting a trip is what makes the driver visible. Location capture begins
 	 * here and nowhere else — this is the app's only GPS permission prompt.
 	 */
-	startTrip: async (destination, routeId) => {
+	startTrip: async (destination, { routeId, destCoords } = {}) => {
 		// The server refuses an unapproved driver too; this is the local guard so
 		// we never even ask for GPS from someone who cannot broadcast yet.
 		if (get().driver?.verification_status !== 'approved') {
@@ -337,11 +359,33 @@ export const useStore = create((set, get) => ({
 			return null
 		}
 
-		const trip = await api.startTrip(destination, routeId)
+		const position = await currentFix()
+		const trip = await api.startTrip(destination, { routeId, position, destCoords })
 		set({ trip, isBroadcasting: true })
 		await get().beginBroadcast(trip.id)
 		return trip
 	},
+
+	/**
+	 * Mid-trip destination change. The server re-resolves the route from the
+	 * vehicle's live position, so the drawn line re-routes the way a
+	 * navigation app would — the run itself keeps going.
+	 */
+	rerouteTrip: async (destination, { routeId, destCoords } = {}) => {
+		const trip = get().trip
+		if (!trip) return null
+
+		const position = await currentFix()
+		const updated = await api.rerouteTrip(trip.id, destination, { routeId, position, destCoords })
+		set({ trip: updated })
+		get().showToast(getCopy().startTrip.rerouted)
+		return updated
+	},
+
+	/** Route intent for /driver/start: deep links drop params, stores don't. */
+	rerouting: false,
+	beginReroute: () => set({ rerouting: true }),
+	endReroute: () => set({ rerouting: false }),
 
 	beginBroadcast: async tripId => {
 		if (broadcastWatcher) broadcastWatcher.remove()

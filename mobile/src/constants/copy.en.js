@@ -216,7 +216,18 @@ export const startTrip = {
 	preview: (km, mins) => `~${km} km · about ${mins} min in current traffic`,
 	destinationPlaceholder: 'Enter a destination',
 	start: 'Start the trip',
-	needDestination: 'Pick a destination first.'
+	needDestination: 'Pick a destination first.',
+	nearbyLabel: 'ROUTES NEAR YOU',
+	nearbyMeta: (km, m) => `${km} km · passes ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} from you`,
+	pickOnMap: 'Pin on the map',
+	pinHint: 'Tap the map where you are headed',
+	pinUse: 'Use this spot',
+	pinnedFallback: 'Pinned location',
+	newRouteNote: 'No known route goes there yet — a new one will be built from right where you are.',
+	rerouteTitle: 'Change destination',
+	rerouteBody: 'The trip re-routes from where you are now — the run keeps going.',
+	rerouteSubmit: 'Change the route',
+	rerouted: 'Route changed.'
 }
 
 export const activeTrip = {

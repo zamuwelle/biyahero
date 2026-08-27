@@ -45,6 +45,7 @@ Route::get('/routes/for-destination', function (Request $request, CorridorMatche
 });
 
 Route::get('/routes/{id}', function ($id) {
+
     $route = Routes::findOrFail($id);
 
     return response()->json([
@@ -54,7 +55,9 @@ Route::get('/routes/{id}', function ($id) {
         'length_km' => $route->length_km,
         'waypoints' => $route->waypoints,
     ]);
-});
+    // whereNumber keeps this from swallowing /routes/nearby (the driver-side
+    // proximity listing registered behind auth below).
+})->whereNumber('id');
 
 /*
 |--------------------------------------------------------------------------
@@ -73,7 +76,38 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/vehicle', [VehicleController::class, 'update']);
     Route::get('/trips/summary', [TripController::class, 'summary']);
     Route::post('/trips', [TripController::class, 'store']);
+    Route::patch('/trips/{trip}/route', [TripController::class, 'reroute']);
     Route::patch('/trips/{trip}/capacity', [TripController::class, 'updateCapacity']);
+
+    // Driver-facing: which routes pass near where I am standing? Lives behind
+    // auth on purpose — no commuter-side code may ever send a position.
+    Route::get('/routes/nearby', function (Request $request, CorridorMatcher $corridor) {
+        $validated = $request->validate([
+            'lat' => 'required|numeric|between:-90,90',
+            'lng' => 'required|numeric|between:-180,180',
+        ]);
+
+        $nearby = Routes::query()
+            ->get(['id', 'label', 'length_km', 'waypoints'])
+            ->map(fn (Routes $route) => [
+                'route' => $route,
+                'distance_m' => $corridor->minDistanceToRoute((float) $validated['lat'], (float) $validated['lng'], $route->waypoints ?? []),
+            ])
+            ->filter(fn (array $x) => $x['distance_m'] <= 1500)
+            ->sortBy('distance_m')
+            ->take(6)
+            ->values()
+            ->map(fn (array $x) => [
+                'id' => $x['route']->id,
+                'label' => $x['route']->label,
+                'length_km' => $x['route']->length_km,
+                // AddRoute and the resolver both name routes "Start → End".
+                'destination' => trim(last(preg_split('/→|->/u', $x['route']->label ?? ''))),
+                'distance_m' => (int) round($x['distance_m']),
+            ]);
+
+        return response()->json(['data' => $nearby]);
+    });
     Route::post('/trips/{trip}/ping', [TripController::class, 'ping']);
     Route::post('/trips/{trip}/end', [TripController::class, 'end']);
 });

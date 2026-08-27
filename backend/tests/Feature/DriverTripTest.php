@@ -145,7 +145,9 @@ it('stops a revoked driver from working and lets them be reinstated', function (
         ->assertSuccessful();
 
     Sanctum::actingAs($driver->fresh());
-    test()->postJson('/api/trips', ['destination' => 'Baclaran'])->assertCreated();
+    // Position is part of starting a trip now — routes resolve from where the
+    // driver actually is.
+    test()->postJson('/api/trips', ['destination' => 'Baclaran', 'lat' => 14.534, 'lng' => 120.9967])->assertCreated();
 });
 
 it('stops a driver working once their licence lapses', function () {

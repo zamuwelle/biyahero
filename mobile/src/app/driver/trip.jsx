@@ -27,6 +27,7 @@ export default function ActiveTrip() {
 	const trip = useStore(s => s.trip)
 	const setCapacity = useStore(s => s.setCapacity)
 	const endTrip = useStore(s => s.endTrip)
+	const beginReroute = useStore(s => s.beginReroute)
 
 	const [elapsed, setElapsed] = useState(0)
 
@@ -74,7 +75,10 @@ export default function ActiveTrip() {
 							</Txt>
 						</View>
 						<Pressable
-							onPress={() => router.replace('/driver/start')}
+							onPress={() => {
+								beginReroute()
+								router.push('/driver/start')
+							}}
 							accessibilityRole="button"
 							className="rounded-full border-[1.5px] border-line-subtle bg-surface px-4 py-2 active:opacity-80"
 						>

@@ -1,0 +1,222 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Destination;
+use App\Models\Route;
+use Illuminate\Support\Facades\Cache;
+
+/**
+ * Decides which route a trip runs on — and builds one when none exists.
+ *
+ * The old resolver fell back to Route::first() (a Metro Manila corridor) for
+ * any unknown destination, which put Tarlac drivers on a Cubao line. This one
+ * never guesses: it reuses a route only when it passes near BOTH the driver
+ * and the destination, otherwise it road-snaps a brand-new route from where
+ * the driver actually is to where they said they are going.
+ */
+class TripRouteResolver
+{
+    /** A route must pass this close to the DRIVER to be reused as-is. */
+    public const DRIVER_RADIUS_M = 800;
+
+    public function __construct(
+        protected CorridorMatcher $corridor,
+        protected RouteGeometry $geometry,
+        protected Geocoder $geocoder,
+    ) {}
+
+    /**
+     * @return array{route: Route, destination: string}|null
+     */
+    public function resolve(
+        ?int $routeId,
+        string $destinationText,
+        ?float $destLat,
+        ?float $destLng,
+        ?float $driverLat,
+        ?float $driverLng,
+    ): ?array {
+        // An explicit route id is the driver tapping a listed route — honour it.
+        if ($routeId && ($route = Route::find($routeId))) {
+            return ['route' => $route, 'destination' => $destinationText];
+        }
+
+        // No driver fix means no way to know which corridor they are on and no
+        // start point for a new route. Refusing beats guessing — guessing is
+        // precisely how Tarlac drivers used to end up on Manila corridors.
+        if ($driverLat === null || $driverLng === null) {
+            return null;
+        }
+
+        $target = $this->destinationPoint($destinationText, $destLat, $destLng, $driverLat, $driverLng);
+        if (! $target) {
+            return null;
+        }
+
+        // Commuters must be able to search this trip and pin its destination,
+        // whether the corridor is reused or freshly built.
+        $target['name'] = $this->ensureDestination($target);
+
+        if ($route = $this->reusableRoute($target, $driverLat, $driverLng)) {
+            return ['route' => $route, 'destination' => $target['name']];
+        }
+
+        return [
+            'route' => $this->createRoute($driverLat, $driverLng, $target),
+            'destination' => $target['name'],
+        ];
+    }
+
+    /**
+     * Where the trip is going: a pinned coordinate, a known destination, or a
+     * freshly geocoded place — in that order of trust.
+     *
+     * Name matches are ranked by distance to the DRIVER, not table order: PH
+     * barangay names repeat in nearly every town ("Poblacion", "San Isidro"),
+     * and a Tarlac driver typing one means the one beside them, not whichever
+     * namesake happened to be inserted first.
+     *
+     * @return array{lat: float, lng: float, name: string}|null
+     */
+    private function destinationPoint(string $text, ?float $lat, ?float $lng, float $driverLat, float $driverLng): ?array
+    {
+        if ($lat !== null && $lng !== null) {
+            $name = trim($text) !== '' ? trim($text) : ($this->geocoder->reverse($lat, $lng) ?? 'Piniling lokasyon');
+
+            return ['lat' => $lat, 'lng' => $lng, 'name' => $name];
+        }
+
+        $needle = mb_strtolower(trim($text));
+        if ($needle === '') {
+            return null;
+        }
+
+        $rows = Destination::query()->get();
+
+        $matches = $rows->filter(fn (Destination $d) => mb_strtolower($d->name) === $needle);
+        if ($matches->isEmpty()) {
+            $matches = $rows->filter(
+                fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle) || str_contains($needle, mb_strtolower($d->name))
+            );
+        }
+
+        $known = $matches->sortBy(
+            fn (Destination $d) => $this->corridor->minDistanceToRoute($driverLat, $driverLng, [['lat' => (float) $d->lat, 'lng' => (float) $d->lng]])
+        )->first();
+
+        if ($known) {
+            return ['lat' => (float) $known->lat, 'lng' => (float) $known->lng, 'name' => $known->name];
+        }
+
+        $found = $this->geocoder->search($text);
+
+        return $found ? ['lat' => $found['lat'], 'lng' => $found['lng'], 'name' => $found['name']] : null;
+    }
+
+    /**
+     * A route is reusable only when it serves the destination AND actually
+     * passes where the driver is standing — that second check is what stops a
+     * Tarlac driver from being put on a Manila corridor with the same name.
+     *
+     * @param  array{lat: float, lng: float, name: string}  $target
+     */
+    private function reusableRoute(array $target, float $driverLat, float $driverLng): ?Route
+    {
+        $nearDestination = $this->corridor->routeIdsNear($target['lat'], $target['lng']);
+        if ($nearDestination === []) {
+            return null;
+        }
+
+        return Route::query()->whereIn('id', $nearDestination)->get()
+            ->map(fn (Route $route) => [
+                'route' => $route,
+                'driver_m' => $this->corridor->minDistanceToRoute($driverLat, $driverLng, $route->waypoints ?? []),
+            ])
+            ->filter(fn (array $x) => $x['driver_m'] <= self::DRIVER_RADIUS_M)
+            // Id as tie-break: equidistant corridors must pick deterministically.
+            ->sortBy(fn (array $x) => [$x['driver_m'], $x['route']->id])
+            ->value('route');
+    }
+
+    /** Roughly how far two points can sit apart and still be "the same place". */
+    private const SAME_PLACE_M = 2000;
+
+    /**
+     * Guarantees a searchable Destination row for the target and returns the
+     * canonical name the trip should carry.
+     *
+     * A same-name row that is genuinely the same place (within 2 km) is
+     * reused. A same-name row somewhere ELSE — "Poblacion" exists in nearly
+     * every PH town, and pinned spots often reverse-geocode to one — gets a
+     * town-qualified name instead, because names are the join key everywhere
+     * (commuter search, the pin cache): letting the first namesake keep the
+     * key would silently point every later trip at the wrong town.
+     *
+     * @param  array{lat: float, lng: float, name: string}  $target
+     */
+    private function ensureDestination(array $target): string
+    {
+        // Fold in PHP — SQLite's LOWER() is ASCII-only ("Parañaque" trap).
+        $sameName = Destination::query()->get()->filter(
+            fn (Destination $d) => mb_strtolower($d->name) === mb_strtolower($target['name'])
+        );
+
+        $samePlace = $sameName->first(
+            fn (Destination $d) => $this->corridor->minDistanceToRoute(
+                $target['lat'],
+                $target['lng'],
+                [['lat' => (float) $d->lat, 'lng' => (float) $d->lng]]
+            ) <= self::SAME_PLACE_M
+        );
+
+        if ($samePlace) {
+            return $samePlace->name;
+        }
+
+        $name = $target['name'];
+        if ($sameName->isNotEmpty()) {
+            $town = $this->geocoder->reverse($target['lat'], $target['lng']);
+            $name = $town && mb_strtolower($town) !== mb_strtolower($name)
+                ? "{$name} ({$town})"
+                : sprintf('%s (%.3f, %.3f)', $name, $target['lat'], $target['lng']);
+        }
+
+        Destination::create([
+            'name' => $name,
+            'subtitle' => $name,
+            'lat' => $target['lat'],
+            'lng' => $target['lng'],
+            'is_popular' => false,
+        ]);
+
+        Cache::forget('destinations.by-name');
+
+        return $name;
+    }
+
+    /** @param array{lat: float, lng: float, name: string} $target */
+    private function createRoute(float $driverLat, float $driverLng, array $target): Route
+    {
+        $snapped = $this->geometry->snapToRoads([
+            ['lat' => $driverLat, 'lng' => $driverLng],
+            ['lat' => $target['lat'], 'lng' => $target['lng']],
+        ]);
+
+        $startName = $this->geocoder->reverse($driverLat, $driverLng) ?? 'Kasalukuyang lokasyon';
+        $label = "{$startName} \u{2192} {$target['name']}";
+
+        return Route::create([
+            'name' => $label,
+            'label' => $label,
+            'control_points' => [
+                ['lat' => $driverLat, 'lng' => $driverLng],
+                ['lat' => $target['lat'], 'lng' => $target['lng']],
+            ],
+            'waypoints' => $snapped['waypoints'],
+            'length_km' => $snapped['length_km'],
+            'duration_min' => $snapped['duration_min'],
+            'road_matched' => $snapped['matched'],
+        ]);
+    }
+}

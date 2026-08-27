@@ -1,45 +1,122 @@
-import { useEffect, useState } from 'react'
-import { View, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler } from 'react-native'
 import { useRouter } from 'expo-router'
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
+import { MaterialIcons } from '@expo/vector-icons'
+import * as Location from 'expo-location'
 import { Screen } from '@/components/ui/Screen'
 import { Txt } from '@/components/ui/Txt'
 import { Header } from '@/components/ui/Header'
-import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
-import { fetchRouteForDestination, fetchEta, fetchDestinations } from '@/services/api'
+import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes } from '@/services/api'
+import { MAP_STYLES } from '@/theme/mapStyle'
+import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
 
 /**
- * 16 · Start Biyahe. The destination declared here is what the commuter search
- * matches against — this is the moment the route becomes a property of the TRIP
- * rather than of the driver.
+ * 16 · Start Biyahe — and, when the store says so, mid-trip rerouting.
+ *
+ * The destination declared here is what the commuter search matches against.
+ * Nothing is hardcoded: the route options are whatever corridors actually
+ * pass near the driver's GPS position, the destination can be pinned on the
+ * map, and an unknown town gets a brand-new road-snapped route built from
+ * where the driver is standing.
  */
 export default function StartTrip() {
 	const copy = useCopy()
+	const { theme, scheme } = useTheme()
 	const router = useRouter()
 	const driver = useStore(s => s.driver)
 	const startTrip = useStore(s => s.startTrip)
+	const rerouting = useStore(s => s.rerouting)
+	const endReroute = useStore(s => s.endReroute)
+	const rerouteTrip = useStore(s => s.rerouteTrip)
 	const showToast = useStore(s => s.showToast)
 
 	const [destination, setDestination] = useState('')
-	const [frequent, setFrequent] = useState([])
+	const [position, setPosition] = useState(null)
+	const [nearby, setNearby] = useState([])
+	const [selectedRouteId, setSelectedRouteId] = useState(null)
+	const [pinned, setPinned] = useState(null)
+	const [picking, setPicking] = useState(false)
+	const [pickPoint, setPickPoint] = useState(null)
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
 	const [starting, setStarting] = useState(false)
+	// Bumped on every manual choice, so a slow reverse geocode from an older
+	// pin confirm can never clobber what the driver picked meanwhile.
+	const chosenRef = useRef(0)
 
+	// The driver's fix seeds everything: the nearby-route list and the point a
+	// new route would start from. Drivers granted location long ago (trips
+	// need it), so this resolves quietly.
 	useEffect(() => {
-		fetchDestinations()
-			.then(list => setFrequent(list.slice(0, 4).map(d => d.name)))
-			.catch(() => setFrequent([]))
+		let cancelled = false
+
+		const locate = async () => {
+			const { status } = await Location.requestForegroundPermissionsAsync()
+			if (status !== 'granted') return
+			// maxAge: a cached fix from another city would list that city's
+			// routes as "near you" — the exact bug this screen exists to kill.
+			const seed =
+				(await Location.getLastKnownPositionAsync({ maxAge: 60_000 }).catch(() => null)) ??
+				(await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null))
+			if (cancelled || !seed?.coords) return
+			const at = { latitude: seed.coords.latitude, longitude: seed.coords.longitude }
+			setPosition(at)
+			fetchNearbyRoutes(at)
+				.then(list => !cancelled && setNearby(list))
+				.catch(() => {})
+		}
+
+		locate()
+		return () => {
+			cancelled = true
+		}
 	}, [])
 
-	// Resolve the route and its travel time whenever the destination settles.
+	// Leaving without submitting must not leave the next visit in reroute mode.
+	useEffect(() => () => endReroute(), [endReroute])
+
+	// Android back while the map picker is open closes the PICKER, not the screen.
+	useEffect(() => {
+		if (!picking) return
+		const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+			setPicking(false)
+			return true
+		})
+		return () => sub.remove()
+	}, [picking])
+
+	// Preview: an explicitly tapped route wins; otherwise resolve the typed
+	// name. No preview means a NEW route will be built server-side on start.
 	useEffect(() => {
 		const name = destination.trim()
-		if (!name) {
+		if (selectedRouteId) {
+			let cancelled = false
+			setEta(null)
+			fetchRoute(selectedRouteId)
+				.then(async found => {
+					if (cancelled) return
+					const waypoints = (found.waypoints ?? []).map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))
+					setRoute({ id: found.id, label: found.label, length_km: Number(found.length_km ?? 0), waypoints })
+					const minutes = await fetchEta({
+						routeId: found.id,
+						vehicleType: driver?.vehicle?.vehicle_type ?? 'jeepney',
+						distanceKm: Number(found.length_km ?? 0)
+					})
+					if (!cancelled) setEta(minutes)
+				})
+				.catch(() => {})
+			return () => {
+				cancelled = true
+			}
+		}
+
+		if (!name || pinned) {
 			setRoute(null)
 			setEta(null)
 			return
@@ -65,7 +142,36 @@ export default function StartTrip() {
 			cancelled = true
 			clearTimeout(timer)
 		}
-	}, [destination, driver])
+	}, [destination, selectedRouteId, pinned, driver])
+
+	const typeDestination = text => {
+		chosenRef.current++
+		setDestination(text)
+		setSelectedRouteId(null)
+		setPinned(null)
+	}
+
+	const pickNearby = r => {
+		chosenRef.current++
+		setDestination(r.destination)
+		setSelectedRouteId(r.id)
+		setPinned(null)
+	}
+
+	const confirmPin = async () => {
+		if (!pickPoint) return
+		const token = ++chosenRef.current
+		setPicking(false)
+		setPinned(pickPoint)
+		setSelectedRouteId(null)
+
+		// A human-readable name for the pinned spot — it becomes the trip's
+		// searchable destination, so "Piniling lokasyon" is the last resort.
+		const places = await Location.reverseGeocodeAsync(pickPoint).catch(() => [])
+		if (chosenRef.current !== token) return
+		const place = places?.[0]
+		setDestination(place?.district || place?.city || place?.subregion || copy.startTrip.pinnedFallback)
+	}
 
 	const begin = async () => {
 		const name = destination.trim()
@@ -73,41 +179,115 @@ export default function StartTrip() {
 
 		setStarting(true)
 		try {
-			const trip = await startTrip(name, route?.id)
-			if (trip) router.replace('/driver/trip')
-		} catch {
-			showToast(copy.common.genericError)
+			const options = {
+				routeId: selectedRouteId ?? undefined,
+				destCoords: pinned ?? undefined
+			}
+			const rerouted = rerouting
+			const trip = rerouted ? await rerouteTrip(name, options) : await startTrip(name, options)
+			if (trip) {
+				endReroute()
+				// Reroute arrived here via push from the trip screen — going back
+				// keeps the stack flat instead of stacking trip copies.
+				if (rerouted) router.back()
+				else router.replace('/driver/trip')
+			}
+		} catch (e) {
+			showToast(e?.response?.data?.message ?? copy.common.genericError)
 		} finally {
 			setStarting(false)
 		}
+	}
+
+	if (picking) {
+		return (
+			<View className="flex-1 bg-surface-canvas">
+				<MapView
+					provider={PROVIDER_GOOGLE}
+					style={{ flex: 1 }}
+					initialRegion={{
+						latitude: position?.latitude ?? 14.575,
+						longitude: position?.longitude ?? 121.0,
+						latitudeDelta: 0.05,
+						longitudeDelta: 0.05
+					}}
+					customMapStyle={MAP_STYLES[scheme]}
+					onPress={e => setPickPoint(e.nativeEvent.coordinate)}
+					toolbarEnabled={false}
+					rotateEnabled={false}
+				>
+					{!!pickPoint && (
+						<Marker coordinate={pickPoint} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={true}>
+							<View collapsable={false} style={{ width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }}>
+								<MaterialIcons name="place" size={52} color={theme.surface.default} style={{ position: 'absolute' }} />
+								<MaterialIcons name="place" size={42} color={theme.route[1]} style={{ position: 'absolute', top: 4 }} />
+							</View>
+						</Marker>
+					)}
+				</MapView>
+
+				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="rounded-lg bg-surface p-3">
+					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.pinHint}</Txt>
+				</View>
+
+				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
+					<Button label={copy.startTrip.pinUse} onPress={confirmPin} disabled={!pickPoint} />
+					<Button label={copy.common.cancel} tone="secondary" onPress={() => setPicking(false)} />
+				</View>
+			</View>
+		)
 	}
 
 	return (
 		<Screen>
 			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6 pt-4 gap-6 flex-grow" keyboardShouldPersistTaps="handled">
-					<Header title={copy.startTrip.title} />
+					<Header title={rerouting ? copy.startTrip.rerouteTitle : copy.startTrip.title} />
 
-					<Txt variant="bodyM" className="text-fg-secondary">{copy.startTrip.body}</Txt>
+					<Txt variant="bodyM" className="text-fg-secondary">
+						{rerouting ? copy.startTrip.rerouteBody : copy.startTrip.body}
+					</Txt>
 
 					<SearchBar
 						value={destination}
-						onChangeText={setDestination}
-						onClear={() => setDestination('')}
+						onChangeText={typeDestination}
+						onClear={() => typeDestination('')}
 						placeholder={copy.startTrip.destinationPlaceholder}
 					/>
 
-					{frequent.length > 0 && (
+					<Pressable
+						onPress={() => {
+							setPickPoint(pinned ?? null)
+							setPicking(true)
+						}}
+						accessibilityRole="button"
+						className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-3 active:opacity-80"
+					>
+						<MaterialIcons name="place" size={22} color={pinned ? theme.route[1] : theme.icon.secondary} />
+						<Txt variant="bodyMStrong" className={pinned ? '' : 'text-fg-secondary'}>
+							{copy.startTrip.pickOnMap}
+						</Txt>
+						{!!pinned && <MaterialIcons name="check-circle" size={18} color={theme.text.success} />}
+					</Pressable>
+
+					{nearby.length > 0 && (
 						<View className="gap-3">
-							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.frequentLabel}</Txt>
-							<View className="flex-row flex-wrap gap-2">
-								{frequent.map(name => (
-									<Chip
-										key={name}
-										label={name}
-										active={destination.trim().toLowerCase() === name.toLowerCase()}
-										onPress={() => setDestination(name)}
-									/>
+							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.nearbyLabel}</Txt>
+							<View className="gap-2">
+								{nearby.map(r => (
+									<Pressable
+										key={r.id}
+										onPress={() => pickNearby(r)}
+										accessibilityRole="button"
+										className={`rounded-lg border-[1.5px] p-3 active:opacity-80 ${
+											selectedRouteId === r.id ? 'border-brand bg-brand-subtle' : 'border-line-subtle bg-surface'
+										}`}
+									>
+										<Txt variant="bodyMStrong" numberOfLines={1}>{r.label}</Txt>
+										<Txt variant="caption" className="text-fg-secondary">
+											{copy.startTrip.nearbyMeta(r.length_km, r.distance_m)}
+										</Txt>
+									</Pressable>
 								))}
 							</View>
 						</View>
@@ -123,9 +303,16 @@ export default function StartTrip() {
 						</View>
 					)}
 
+					{!route && (!!destination.trim() || !!pinned) && (
+						<View className="flex-row items-start gap-3 rounded-lg bg-surface-sunken p-3">
+							<MaterialIcons name="alt-route" size={20} color={theme.icon.secondary} />
+							<Txt variant="caption" className="min-w-0 flex-1 text-fg-secondary">{copy.startTrip.newRouteNote}</Txt>
+						</View>
+					)}
+
 					<View className="flex-1" />
 					<Button
-						label={copy.startTrip.start}
+						label={rerouting ? copy.startTrip.rerouteSubmit : copy.startTrip.start}
 						onPress={begin}
 						loading={starting}
 						disabled={!destination.trim()}

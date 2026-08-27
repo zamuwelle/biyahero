@@ -270,7 +270,18 @@ export const startTrip = {
 	preview: (km, mins) => `~${km} km · tinatayang ${mins} min sa trapiko ngayon`,
 	destinationPlaceholder: 'Ilagay ang destinasyon',
 	start: 'Simulan ang biyahe',
-	needDestination: 'Pumili muna ng destinasyon.'
+	needDestination: 'Pumili muna ng destinasyon.',
+	nearbyLabel: 'MGA RUTA MALAPIT SA IYO',
+	nearbyMeta: (km, m) => `${km} km · dumadaan ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} mula sa iyo`,
+	pickOnMap: 'Ituro sa mapa',
+	pinHint: 'I-tap ang mapa kung saan ang punta mo',
+	pinUse: 'Gamitin ang lugar na ito',
+	pinnedFallback: 'Piniling lokasyon',
+	newRouteNote: 'Walang kilalang ruta papunta diyan — gagawa ng bago mula mismo sa kinaroroonan mo.',
+	rerouteTitle: 'Palitan ang destinasyon',
+	rerouteBody: 'Ire-ruta ang biyahe mula sa kasalukuyan mong kinaroroonan — tuloy ang takbo ng biyahe.',
+	rerouteSubmit: 'Palitan ang ruta',
+	rerouted: 'Napalitan ang ruta.'
 }
 
 export const activeTrip = {

@@ -2,10 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Destination;
-use App\Models\Route;
 use App\Models\Trip;
-use App\Services\CorridorMatcher;
+use App\Services\TripRouteResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,7 +14,7 @@ use Illuminate\Http\Request;
  */
 class TripController extends Controller
 {
-    public function __construct(protected CorridorMatcher $corridor) {}
+    public function __construct(protected TripRouteResolver $resolver) {}
 
     /** The driver's current run, if any. */
     public function current(Request $request): JsonResponse
@@ -36,6 +34,13 @@ class TripController extends Controller
         $validated = $request->validate([
             'destination' => 'required|string|max:120',
             'route_id' => 'nullable|integer|exists:routes,id',
+            // Where the driver is starting from — this is what stops a Tarlac
+            // driver from ever being put on a Metro Manila corridor.
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            // A destination pinned on the map instead of typed.
+            'dest_lat' => 'nullable|numeric|between:-90,90',
+            'dest_lng' => 'nullable|numeric|between:-180,180',
         ]);
 
         $driver = $request->user();
@@ -51,9 +56,17 @@ class TripController extends Controller
             return $this->error('No vehicle registered for this driver.', 404);
         }
 
-        $route = $this->resolveRoute($validated['route_id'] ?? null, $validated['destination']);
-        if (! $route) {
-            return $this->error('No known route serves that destination yet.', 422);
+        $resolved = $this->resolver->resolve(
+            $validated['route_id'] ?? null,
+            $validated['destination'],
+            isset($validated['dest_lat']) ? (float) $validated['dest_lat'] : null,
+            isset($validated['dest_lng']) ? (float) $validated['dest_lng'] : null,
+            isset($validated['lat']) ? (float) $validated['lat'] : null,
+            isset($validated['lng']) ? (float) $validated['lng'] : null,
+        );
+
+        if (! $resolved) {
+            return $this->error('Hindi mahanap ang lugar na iyan. Subukan ang ibang pangalan, o ituro ito sa mapa.', 422);
         }
 
         // One run at a time — starting a new trip closes any run left open.
@@ -61,13 +74,60 @@ class TripController extends Controller
 
         $trip = Trip::create([
             'vehicle_id' => $vehicle->id,
-            'route_id' => $route->id,
-            'destination' => $validated['destination'],
+            'route_id' => $resolved['route']->id,
+            'destination' => $resolved['destination'],
             'capacity' => 'open',
             'started_at' => now(),
         ]);
 
         return $this->success($trip->load('route'), 'Nagsimula ang biyahe.', 201);
+    }
+
+    /**
+     * Mid-trip destination change. The new route is resolved from where the
+     * vehicle IS RIGHT NOW — the drawn line re-routes like a navigation app —
+     * while the run itself (start time, distance so far) is preserved.
+     */
+    public function reroute(Request $request, Trip $trip): JsonResponse
+    {
+        $this->authorizeTrip($request, $trip);
+
+        // A finished run is a historical record — /trips/history serves its
+        // destination and route. Only a live trip may change course.
+        if ($trip->ended_at !== null) {
+            return $this->error('Tapos na ang biyaheng ito.', 422);
+        }
+
+        $validated = $request->validate([
+            'destination' => 'required|string|max:120',
+            'route_id' => 'nullable|integer|exists:routes,id',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'dest_lat' => 'nullable|numeric|between:-90,90',
+            'dest_lng' => 'nullable|numeric|between:-180,180',
+        ]);
+
+        $vehicle = $trip->vehicle;
+
+        $resolved = $this->resolver->resolve(
+            $validated['route_id'] ?? null,
+            $validated['destination'],
+            isset($validated['dest_lat']) ? (float) $validated['dest_lat'] : null,
+            isset($validated['dest_lng']) ? (float) $validated['dest_lng'] : null,
+            isset($validated['lat']) ? (float) $validated['lat'] : ($vehicle->live_lat !== null ? (float) $vehicle->live_lat : null),
+            isset($validated['lng']) ? (float) $validated['lng'] : ($vehicle->live_lng !== null ? (float) $vehicle->live_lng : null),
+        );
+
+        if (! $resolved) {
+            return $this->error('Hindi mahanap ang lugar na iyan. Subukan ang ibang pangalan, o ituro ito sa mapa.', 422);
+        }
+
+        $trip->update([
+            'route_id' => $resolved['route']->id,
+            'destination' => $resolved['destination'],
+        ]);
+
+        return $this->success($trip->load('route'), 'Napalitan ang ruta.');
     }
 
     /** Capacity is the driver's one-tap job while driving, so it gets its own route. */
@@ -176,25 +236,6 @@ class TripController extends Controller
     }
 
     /** An explicit route wins; otherwise pick one whose polyline passes the destination. */
-    private function resolveRoute(?int $routeId, string $destination): ?Route
-    {
-        if ($routeId) {
-            return Route::find($routeId);
-        }
-
-        $place = Destination::query()
-            ->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($destination).'%'])
-            ->first();
-
-        if (! $place) {
-            return Route::first();
-        }
-
-        $ids = $this->corridor->routeIdsNear($place->lat, $place->lng);
-
-        return $ids ? Route::find($ids[0]) : Route::first();
-    }
-
     private function authorizeTrip(Request $request, Trip $trip): void
     {
         abort_unless($trip->vehicle?->user_id === $request->user()->id, 403, 'Hindi ito ang biyahe mo.');

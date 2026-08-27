@@ -148,10 +148,36 @@ export const logoutDriver = () => client.post('/logout').catch(() => {})
 
 export const fetchCurrentTrip = () => client.get('/trips/current').then(res => res.data?.data)
 
+/** Routes whose corridor passes near the DRIVER — never called commuter-side. */
+export const fetchNearbyRoutes = ({ latitude, longitude }) =>
+	client
+		.get('/routes/nearby', { params: { lat: latitude, lng: longitude } })
+		.then(res => res.data?.data ?? [])
+
 export const fetchTripSummary = () => client.get('/trips/summary').then(res => res.data?.data)
 
-export const startTrip = (destination, routeId) =>
-	client.post('/trips', { destination, ...(routeId ? { route_id: routeId } : {}) }).then(res => res.data?.data)
+export const startTrip = (destination, { routeId, position, destCoords } = {}) =>
+	client
+		.post('/trips', {
+			destination,
+			...(routeId ? { route_id: routeId } : {}),
+			// The driver's own position: route resolution starts from here, so a
+			// Tarlac driver can never be handed a Metro Manila corridor.
+			...(position ? { lat: position.latitude, lng: position.longitude } : {}),
+			...(destCoords ? { dest_lat: destCoords.latitude, dest_lng: destCoords.longitude } : {})
+		})
+		.then(res => res.data?.data)
+
+/** Mid-trip destination change — the route re-resolves from the live position. */
+export const rerouteTrip = (tripId, destination, { routeId, position, destCoords } = {}) =>
+	client
+		.patch(`/trips/${tripId}/route`, {
+			destination,
+			...(routeId ? { route_id: routeId } : {}),
+			...(position ? { lat: position.latitude, lng: position.longitude } : {}),
+			...(destCoords ? { dest_lat: destCoords.latitude, dest_lng: destCoords.longitude } : {})
+		})
+		.then(res => res.data?.data)
 
 export const pingTrip = (tripId, { latitude, longitude, street, distanceKm }) =>
 	client.post(`/trips/${tripId}/ping`, {
