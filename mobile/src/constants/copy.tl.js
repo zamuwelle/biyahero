@@ -50,6 +50,11 @@ export const mapHome = {
 	/** Count is injected: "12 sasakyan aktibo ngayon". */
 	activeCount: n => `${n} sasakyan aktibo ngayon`,
 	updateNote: 'Nag-a-update kada 8 segundo · walang location permission',
+	updateNoteLocated: 'Nag-a-update kada 8 segundo · ipinapakita ang lokasyon mo',
+	myLocation: 'Ipakita ang lokasyon ko',
+	myLocationOn: 'Ipinapakita na ang lokasyon mo',
+	myLocationOff: 'Itinago ang lokasyon mo',
+	near: plate => `Malapit na ang ${plate}!`,
 	filters: [
 		{ key: 'all', label: 'Lahat' },
 		{ key: 'jeepney', label: 'Jeepney' },
@@ -87,6 +92,8 @@ export const vehicle = {
 	onStreet: street => `Nasa ${street} ngayon`,
 	lastOnStreet: street => `Huling nasa ${street}`,
 	verifiedDriver: years => `Beripikadong drayber · ${years} taon sa ruta`,
+	/** Straight-line distance — honest now, because the commuter opted in. */
+	away: m => (m < 1000 ? `${m} m ang layo sa iyo` : `${(m / 1000).toFixed(1)} km ang layo sa iyo`),
 	staleTitle: 'Huling alam na posisyon',
 	staleBody: 'Walang live na GPS. Ipinapakita ang oras kung kailan huling nakita.'
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { View, ScrollView, Pressable } from 'react-native'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -38,6 +38,22 @@ export default function MapHome() {
 	const selectVehicle = useStore(s => s.selectVehicle)
 	const startPolling = useStore(s => s.startPolling)
 	const stopPolling = useStore(s => s.stopPolling)
+	const myLocation = useStore(s => s.myLocation)
+	const myLocationOn = useStore(s => s.myLocationOn)
+	const toggleMyLocation = useStore(s => s.toggleMyLocation)
+	const enableMyLocation = useStore(s => s.enableMyLocation)
+	const [locateNonce, setLocateNonce] = useState(0)
+
+	const onCrosshair = async () => {
+		if (myLocationOn) {
+			// Already on: first re-tap recentres; turning it off is done from the
+			// same button via long-press semantics being overkill — recentre wins.
+			setLocateNonce(n => n + 1)
+			return
+		}
+		const ok = await enableMyLocation()
+		if (ok) setLocateNonce(n => n + 1)
+	}
 
 	useFocusEffect(
 		useCallback(() => {
@@ -71,6 +87,8 @@ export default function MapHome() {
 				onSelect={openVehicle}
 				routeWaypoints={routeWaypoints}
 				fitTo={fitTo}
+				myLocation={myLocation}
+				locateNonce={locateNonce}
 			/>
 
 			<View style={{ top: insets.top + 6 }} className="absolute left-6 right-6 flex-row items-center gap-2">
@@ -92,6 +110,19 @@ export default function MapHome() {
 				</Pressable>
 			</View>
 
+			{/* Crosshair: the ONLY way the app ever asks for a commuter location. */}
+			<Pressable
+				onPress={onCrosshair}
+				onLongPress={toggleMyLocation}
+				accessibilityRole="button"
+				accessibilityLabel={copy.mapHome.myLocation}
+				accessibilityState={{ selected: myLocationOn }}
+				style={elevation.float}
+				className="absolute bottom-[350px] right-6 h-14 w-14 items-center justify-center rounded-full border-[1.5px] border-line-subtle bg-surface active:opacity-80"
+			>
+				<MaterialIcons name={myLocationOn ? 'my-location' : 'location-searching'} size={24} color={myLocationOn ? '#1A73E8' : theme.icon.secondary} />
+			</Pressable>
+
 			<Sheet peekHeight={330}>
 				<View className="gap-3 pb-3">
 					<View className="gap-[3px]">
@@ -101,7 +132,7 @@ export default function MapHome() {
 								: copy.mapHome.activeCount(vehicles.length)}
 						</Txt>
 						<Txt variant="caption" className="text-fg-secondary">
-							{destination ? copy.search.resultsSubtitle(destination.name) : copy.mapHome.updateNote}
+							{destination ? copy.search.resultsSubtitle(destination.name) : myLocationOn ? copy.mapHome.updateNoteLocated : copy.mapHome.updateNote}
 						</Txt>
 					</View>
 

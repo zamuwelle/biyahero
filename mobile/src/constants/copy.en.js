@@ -49,6 +49,11 @@ export const mapHome = {
 	searchPlaceholder: 'Where are you going?',
 	activeCount: n => `${n} vehicle${n === 1 ? '' : 's'} active now`,
 	updateNote: 'Updates every 8 seconds · no location permission',
+	updateNoteLocated: 'Updates every 8 seconds · showing your location',
+	myLocation: 'Show my location',
+	myLocationOn: 'Now showing your location',
+	myLocationOff: 'Your location is hidden',
+	near: plate => `${plate} is close!`,
 	filters: [
 		{ key: 'all', label: 'All' },
 		{ key: 'jeepney', label: 'Jeepney' },
@@ -83,6 +88,7 @@ export const vehicle = {
 	onStreet: street => `On ${street} now`,
 	lastOnStreet: street => `Last seen on ${street}`,
 	verifiedDriver: years => `Verified driver · ${years} year${years === 1 ? '' : 's'} on the route`,
+	away: m => (m < 1000 ? `${m} m away from you` : `${(m / 1000).toFixed(1)} km away from you`),
 	staleTitle: 'Last known position',
 	staleBody: 'No live GPS. Showing when this vehicle was last seen.'
 }

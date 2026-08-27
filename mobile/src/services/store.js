@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
 import * as api from './api'
 import { PING_INTERVAL_MS } from '@/theme/tokens'
+import { Vibration } from 'react-native'
+import { distanceM, NEAR_M, NEAR_RESET_M } from './geo'
 import { getCopy } from '@/constants/copy'
 
 const KEYS = { role: 'biyahero.role', token: 'biyahero.token', driver: 'biyahero.driver', searches: 'biyahero.searches' }
@@ -10,6 +12,8 @@ const MAX_RECENT = 3
 
 let pollTimer = null
 let broadcastWatcher = null
+let myLocationWatcher = null
+let lastNearId = null
 let toastTimer = null
 let lastStreetLookup = 0
 
@@ -78,8 +82,11 @@ export const useStore = create((set, get) => ({
 	},
 
 	/* ------------------------------------------------------------- commuter */
-	// No coords, no permission, no radius. The only filters are a typed
-	// destination and a vehicle class.
+	// Filtering never uses a commuter position. `myLocation` exists only when
+	// the commuter taps the crosshair and grants permission — strictly opt-in,
+	// display-and-alert only, never sent to the server.
+	myLocation: null,
+	myLocationOn: false,
 	vehicles: [],
 	activeCount: 0,
 	loading: false,
@@ -130,10 +137,104 @@ export const useStore = create((set, get) => ({
 				vehicleType: vehicleFilter
 			})
 			set({ vehicles, activeCount: meta.count ?? vehicles.length, error: null })
+			get().checkProximity()
 		} catch {
 			set({ error: getCopy().common.offline })
 		} finally {
 			set({ loading: false })
+		}
+	},
+
+	/**
+	 * Opt-in blue dot. Nothing here talks to the server: the position feeds the
+	 * map marker, the distance lines, and the nearby vibration — that is all.
+	 */
+	enableMyLocation: async () => {
+		const servicesOn = await Location.hasServicesEnabledAsync().catch(() => false)
+		if (!servicesOn) {
+			get().showToast(getCopy().driverHome.locationServicesOff)
+			return false
+		}
+
+		const { status } = await Location.requestForegroundPermissionsAsync()
+		if (status !== 'granted') {
+			get().showToast(getCopy().settings.locationOff)
+			return false
+		}
+
+		set({ myLocationOn: true })
+		get().showToast(getCopy().mapHome.myLocationOn)
+
+		const apply = coords => {
+			if (!coords) return
+			set({ myLocation: { latitude: coords.latitude, longitude: coords.longitude } })
+			get().checkProximity()
+		}
+
+		try {
+			// Seed from the OS cache instantly, then demand a fresh fix — the
+			// cache alone can be empty on a cold permission grant.
+			const seed = await Location.getLastKnownPositionAsync()
+			apply(seed?.coords)
+
+			// High, not Balanced: on some devices (this MediaTek included) the
+			// network provider never answers and Balanced hangs forever, while
+			// GPS resolves fine — the driver-side watcher proved that.
+			if (!seed?.coords) {
+				const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+				apply(fix?.coords)
+			}
+
+			myLocationWatcher = await Location.watchPositionAsync(
+				{ accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
+				loc => apply(loc?.coords)
+			)
+		} catch (e) {
+			// Surfacing beats a silently empty map — this is why the dot exists.
+			get().showToast(`${getCopy().common.genericError} (${e?.message ?? 'location'})`)
+			set({ myLocationOn: false })
+			return false
+		}
+
+		return true
+	},
+
+	disableMyLocation: () => {
+		if (myLocationWatcher) {
+			myLocationWatcher.remove()
+			myLocationWatcher = null
+		}
+		lastNearId = null
+		set({ myLocation: null, myLocationOn: false })
+		get().showToast(getCopy().mapHome.myLocationOff)
+	},
+
+	toggleMyLocation: () => (get().myLocationOn ? get().disableMyLocation() : get().enableMyLocation()),
+
+	/**
+	 * Vibrate once when a LIVE vehicle comes within NEAR_M of the commuter,
+	 * and not again until it has left NEAR_RESET_M — otherwise a jeepney
+	 * crawling in traffic would buzz the phone continuously.
+	 */
+	checkProximity: (candidates = null) => {
+		const { myLocation, myLocationOn, vehicles } = get()
+		if (!myLocationOn || !myLocation) return
+
+		const live = (candidates ?? vehicles).filter(v => !v.stale && v.position)
+		const withDistance = live
+			.map(v => ({ v, d: distanceM(myLocation, v.position) }))
+			.filter(x => x.d !== null)
+			.sort((a, b) => a.d - b.d)
+
+		const nearest = withDistance[0]
+		if (!nearest) return
+
+		if (nearest.d <= NEAR_M && lastNearId !== nearest.v.id) {
+			lastNearId = nearest.v.id
+			Vibration.vibrate([0, 250, 120, 250])
+			get().showToast(getCopy().mapHome.near(nearest.v.plate_number))
+		} else if (nearest.d > NEAR_RESET_M && lastNearId === nearest.v.id) {
+			lastNearId = null
 		}
 	},
 

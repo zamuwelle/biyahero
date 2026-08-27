@@ -12,6 +12,8 @@ import { VehicleGlyph } from '@/components/VehicleGlyph'
 import { CapacityBadge } from '@/components/CapacityBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { fetchVehicle } from '@/services/api'
+import { useStore } from '@/services/store'
+import { distanceM } from '@/services/geo'
 import { elevation, VEHICLE_LABELS, PING_INTERVAL_MS } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -38,8 +40,8 @@ const DetailRow = ({ tint, children, title, subtitle }) => (
 /**
  * 08 · Vehicle Detail, and 09 · Weak Signal when the ping has gone stale.
  *
- * There is no ETA and no distance on this screen by design. It answers "where
- * is it now and can I get on", which is everything the data actually supports.
+ * No ETA by design — a minutes figure would be invented. Distance-to-you shows
+ * only when the commuter has opted into the map crosshair, computed on-device.
  */
 export default function VehicleDetail() {
 	const copy = useCopy()
@@ -48,6 +50,8 @@ export default function VehicleDetail() {
 	const router = useRouter()
 	const insets = useSafeAreaInsets()
 
+	const myLocation = useStore(s => s.myLocation)
+	const checkProximity = useStore(s => s.checkProximity)
 	const [vehicle, setVehicle] = useState(null)
 	const [loading, setLoading] = useState(true)
 	const [missing, setMissing] = useState(false)
@@ -57,7 +61,9 @@ export default function VehicleDetail() {
 
 		const load = () =>
 			fetchVehicle(id)
-				.then(data => !cancelled && (setVehicle(data), setMissing(false)))
+				// Map Home's poll is stopped while this screen has focus, so the
+				// proximity buzz runs off this screen's own refresh instead.
+				.then(data => !cancelled && (setVehicle(data), setMissing(false), checkProximity([data])))
 				// A 404 here means the driver ended the trip while this was open.
 				.catch(() => !cancelled && setMissing(true))
 				.finally(() => !cancelled && setLoading(false))
@@ -104,6 +110,7 @@ export default function VehicleDetail() {
 				selectedId={vehicle.id}
 				routeWaypoints={vehicle.route?.waypoints}
 				fitTo={vehicle.route?.waypoints}
+				myLocation={myLocation}
 			/>
 
 			<Pressable
@@ -177,7 +184,8 @@ export default function VehicleDetail() {
 										? copy.vehicle.lastOnStreet(vehicle.current_street)
 										: copy.vehicle.currentlyAt(vehicle.current_street))
 									: null,
-								vehicle.route?.length_km ? copy.vehicle.routeLength(vehicle.route.length_km) : null
+								vehicle.route?.length_km ? copy.vehicle.routeLength(vehicle.route.length_km) : null,
+								myLocation && vehicle.position ? copy.vehicle.away(distanceM(myLocation, vehicle.position)) : null
 							].filter(Boolean).join(' · ')}
 						>
 							<MaterialIcons name="place" size={20} color={theme.brand.hover} />

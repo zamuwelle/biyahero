@@ -4,18 +4,21 @@ import { Txt } from '@/components/ui/Txt'
 import { VehicleGlyph } from './VehicleGlyph'
 import { CapacityBadge } from './CapacityBadge'
 import { FreshnessPill } from './FreshnessPill'
+import { useStore } from '@/services/store'
+import { distanceM } from '@/services/geo'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
 
 /**
  * Destination first — the question the commuter is actually asking.
- * NO ETA-to-you and NO distance-to-you: the app never learns the commuter's
- * position, so any such number would be invented. The card states only what the
- * data supports — where it's headed, where it is right now, how full it is, and
- * how fresh the last ping was.
+ * The distance line appears only after the commuter opts in via the map
+ * crosshair; it is computed on-device and the position never leaves the phone.
+ * Still no ETA — traffic makes any minutes figure invented.
  */
 export const VehicleCard = ({ vehicle, onPress }) => {
 	const copy = useCopy()
+	const myLocation = useStore(s => s.myLocation)
+	const away = vehicle.position ? distanceM(myLocation, vehicle.position) : null
 	const { theme } = useTheme()
 	const { destination, plate_number, vehicle_type, capacity, current_street, is_verified, stale, minutesAgo } = vehicle
 	const routeColor = stale ? theme.border.strong : theme.route[1]
@@ -51,8 +54,11 @@ export const VehicleCard = ({ vehicle, onPress }) => {
 				)}
 			</View>
 
-			<View className="w-[72px] items-end">
+			<View className="w-[84px] items-end gap-1">
 				<FreshnessPill stale={stale} minutesAgo={minutesAgo} />
+				{away !== null && (
+					<Txt variant="caption" className="text-right text-fg-secondary">{copy.vehicle.away(away)}</Txt>
+				)}
 			</View>
 		</Pressable>
 	)

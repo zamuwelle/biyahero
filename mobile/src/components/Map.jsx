@@ -69,7 +69,7 @@ const VehiclePin = ({ vehicle, selected, onPress }) => {
  * figure. Nothing here reads or displays the commuter's own position — there is
  * no myLocation button and no permission request.
  */
-export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo, rememberRegion = false }) => {
+export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo, myLocation, locateNonce = 0, rememberRegion = false }) => {
 	const { theme, scheme } = useTheme()
 	const mapRef = useRef(null)
 	const [initialRegion, setInitialRegion] = useState(rememberRegion ? null : DEFAULT_REGION)
@@ -81,6 +81,13 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo
 			.then(saved => setInitialRegion(saved ? JSON.parse(saved) : DEFAULT_REGION))
 			.catch(() => setInitialRegion(DEFAULT_REGION))
 	}, [rememberRegion])
+
+	// Crosshair tap: bring the commuter's own dot into view.
+	useEffect(() => {
+		if (locateNonce > 0 && myLocation && mapRef.current) {
+			mapRef.current.animateCamera({ center: myLocation, zoom: 15 }, { duration: 600 })
+		}
+	}, [locateNonce])
 
 	// When a destination narrows the list, frame the matches instead of leaving
 	// the user to hunt for them on a city-wide view.
@@ -124,6 +131,18 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo
 					.map(v => (
 						<VehiclePin key={v.id} vehicle={v} selected={v.id === selectedId} onPress={() => onSelect?.(v)} />
 					))}
+
+				{!!myLocation && (
+					<Marker coordinate={myLocation} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} zIndex={100}>
+						{/* The conventional blue dot: halo, white ring, solid core. */}
+						<View className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(26,115,232,0.18)' }}>
+							<View
+								className="h-[18px] w-[18px] rounded-full border-[3px]"
+								style={{ backgroundColor: '#1A73E8', borderColor: '#FFFFFF' }}
+							/>
+						</View>
+					</Marker>
+				)}
 			</MapView>
 		</View>
 	)
