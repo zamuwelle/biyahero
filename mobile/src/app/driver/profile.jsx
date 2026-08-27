@@ -84,7 +84,7 @@ export default function DriverProfile() {
 
 					<View className="gap-3">
 						<Row title={copy.driverProfile.tripHistory} onPress={() => router.push('/driver/history')} />
-						<Row title={copy.driverProfile.languageTheme} onPress={() => router.push('/settings')} />
+						<Row title={copy.driverProfile.settingsRow} subtitle={copy.driverProfile.settingsRowHint} onPress={() => router.push('/settings')} />
 						<Row title={copy.driverProfile.help} onPress={() => router.push('/driver/help')} />
 					</View>
 

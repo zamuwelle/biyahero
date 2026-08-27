@@ -230,7 +230,8 @@ export const driverProfile = {
 	myVehicle: 'MY VEHICLE',
 	edit: 'Edit',
 	tripHistory: 'Trip history',
-	languageTheme: 'Language and theme',
+	settingsRow: 'Settings',
+	settingsRowHint: 'Language, theme, and mode switch (Ride/Drive)',
 	help: 'Help and support',
 	logout: 'Log out'
 }

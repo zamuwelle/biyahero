@@ -286,7 +286,8 @@ export const driverProfile = {
 	myVehicle: 'SASAKYAN KO',
 	edit: 'Baguhin',
 	tripHistory: 'Kasaysayan ng biyahe',
-	languageTheme: 'Wika at tema',
+	settingsRow: 'Settings',
+	settingsRowHint: 'Wika, tema, at pagpalit ng mode (Sakay/Driver)',
 	help: 'Tulong at suporta',
 	logout: 'Mag-log out'
 }
