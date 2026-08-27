@@ -32,6 +32,9 @@ const normaliseVehicle = v => {
 		model: v.model,
 		body_number: v.body_number,
 		destination: v.destination,
+		destinationPosition: v.destination_position?.lat != null
+			? { latitude: Number(v.destination_position.lat), longitude: Number(v.destination_position.lng) }
+			: null,
 		capacity: stale ? 'unknown' : (v.capacity ?? 'unknown'),
 		current_street: v.current_street,
 		position: v.position?.lat != null

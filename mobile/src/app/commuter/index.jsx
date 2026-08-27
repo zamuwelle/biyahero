@@ -63,13 +63,33 @@ export default function MapHome() {
 	)
 
 	const allStale = vehicles.length > 0 && vehicles.every(v => v.stale)
-	const routeWaypoints = useMemo(
-		() => vehicles.find(v => v.id === selectedVehicleId)?.route?.waypoints,
+	const selected = useMemo(
+		() => vehicles.find(v => v.id === selectedVehicleId),
 		[vehicles, selectedVehicleId]
 	)
+	const routeWaypoints = selected?.route?.waypoints
+
+	// The place the map should name: the selected vehicle's destination first,
+	// otherwise the destination being searched for. Both are public places.
+	// Route-end fallback matches the detail screen — a route line without a
+	// head is exactly the floating squiggle the pin exists to prevent.
+	const destinationPin = useMemo(() => {
+		if (selected) {
+			const at = selected.destinationPosition ?? selected.route?.waypoints?.[selected.route.waypoints.length - 1]
+			if (at) return { ...at, label: selected.destination }
+		}
+		if (destination?.lat != null) {
+			return { latitude: Number(destination.lat), longitude: Number(destination.lng), label: destination.name }
+		}
+		return null
+	}, [selected, destination])
+
 	const fitTo = useMemo(
-		() => (destination ? vehicles.map(v => v.position).filter(Boolean) : null),
-		[destination, vehicles]
+		() =>
+			destination
+				? [...vehicles.map(v => v.position), destinationPin].filter(Boolean)
+				: null,
+		[destination, vehicles, destinationPin]
 	)
 
 	const openVehicle = vehicle => {
@@ -86,6 +106,7 @@ export default function MapHome() {
 				selectedId={selectedVehicleId}
 				onSelect={openVehicle}
 				routeWaypoints={routeWaypoints}
+				destinationPin={destinationPin}
 				fitTo={fitTo}
 				myLocation={myLocation}
 				locateNonce={locateNonce}

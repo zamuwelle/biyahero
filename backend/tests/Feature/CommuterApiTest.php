@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Destination;
 use App\Models\Trip;
 use App\Models\Vehicle;
 use Database\Seeders\DatabaseSeeder;
@@ -72,6 +73,45 @@ it('corridor-matches a destination to routes that pass within 400 m', function (
     foreach ($response->json('data') as $vehicle) {
         expect($vehicle['route']['label'])->toContain('Baclaran');
     }
+});
+
+it('pins where each trip is headed, using the destination table not the route end', function () {
+    // Sentinel position: the seeded routes end exactly on the seeded Baclaran
+    // coordinates, so without this move a route-end implementation would pass
+    // this test by coincidence. Nowhere near any route end.
+    Destination::query()->where('name', 'Baclaran')->firstOrFail()
+        ->update(['lat' => 14.60000, 'lng' => 121.10000]);
+
+    $response = $this->getJson('/api/active-vehicles')->assertOk();
+
+    $bound = collect($response->json('data'))->where('destination', 'Baclaran');
+    expect($bound)->not->toBeEmpty();
+
+    foreach ($bound as $vehicle) {
+        expect($vehicle['destination_position'])->toBe(['lat' => 14.6, 'lng' => 121.1]);
+    }
+});
+
+it('pins a free-typed trip destination via a contains match, like the trip and search paths', function () {
+    $trip = Trip::query()->active()->firstOrFail();
+    // Drivers type destinations freehand: "Taft" must still pin "Taft Avenue".
+    $trip->update(['destination' => 'Taft']);
+
+    $taft = Destination::query()->where('name', 'Taft Avenue')->firstOrFail();
+
+    $this->getJson("/api/active-vehicles/{$trip->vehicle_id}")
+        ->assertOk()
+        ->assertJsonPath('data.destination_position.lat', (float) $taft->lat)
+        ->assertJsonPath('data.destination_position.lng', (float) $taft->lng);
+});
+
+it('returns a null destination pin for a destination name it does not know', function () {
+    $trip = Trip::query()->active()->firstOrFail();
+    $trip->update(['destination' => 'Kung Saan-Saan Lang']);
+
+    $this->getJson("/api/active-vehicles/{$trip->vehicle_id}")
+        ->assertOk()
+        ->assertJsonPath('data.destination_position', null);
 });
 
 it('returns nothing for an unknown destination rather than falling back to everything', function () {

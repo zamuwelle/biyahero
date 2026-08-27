@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\RouteGeometry;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -89,10 +90,23 @@ class AddRoute extends Command
 
         $end = end($snapped['waypoints']);
 
-        $destination = Destination::firstOrCreate(
-            ['name' => $destinationName],
-            ['subtitle' => $label, 'lat' => $end['lat'], 'lng' => $end['lng'], 'is_popular' => true]
-        );
+        // Case-insensitive lookup, folded in PHP: every read path lowercases
+        // names with mb_strtolower, so "baclaran" must reuse "Baclaran" — and
+        // SQLite's LOWER() folds ASCII only, which would let "Parañaque" slip
+        // past "PARAÑAQUE" and hijack the shared lowercased cache key.
+        $destination = Destination::query()
+            ->get()
+            ->first(fn (Destination $existing) => mb_strtolower($existing->name) === mb_strtolower($destinationName))
+            ?? Destination::create([
+                'name' => $destinationName,
+                'subtitle' => $label,
+                'lat' => $end['lat'],
+                'lng' => $end['lng'],
+                'is_popular' => true,
+            ]);
+
+        // The vehicle payload caches the destination table for its map pins.
+        Cache::forget('destinations.by-name');
 
         $this->info("Destination '{$destination->name}' ready at {$destination->lat}, {$destination->lng}.");
 

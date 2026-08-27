@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { View, ScrollView, Pressable, ActivityIndicator } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -77,6 +77,21 @@ export default function VehicleDetail() {
 		}
 	}, [id])
 
+	const destinationPin = useMemo(() => {
+		if (!vehicle) return null
+		const at = vehicle.destinationPosition ?? vehicle.route?.waypoints?.[vehicle.route.waypoints.length - 1]
+		return at ? { ...at, label: vehicle.destination } : null
+		// Keyed on the trip, not the vehicle object — a poll rebuilds the object
+		// every 8 s but the destination only changes with the trip.
+	}, [vehicle?.tripId, vehicle?.destination])
+
+	// Frame route + destination ONCE per trip. Recomputing per poll would yank
+	// the camera back every 8 s and fight anyone panning around the route.
+	const fitTo = useMemo(
+		() => [...(vehicle?.route?.waypoints ?? []), destinationPin].filter(Boolean),
+		[vehicle?.route?.id, destinationPin]
+	)
+
 	if (loading) {
 		return (
 			<View className="flex-1 items-center justify-center bg-surface-canvas">
@@ -109,7 +124,8 @@ export default function VehicleDetail() {
 				vehicles={[vehicle]}
 				selectedId={vehicle.id}
 				routeWaypoints={vehicle.route?.waypoints}
-				fitTo={vehicle.route?.waypoints}
+				destinationPin={destinationPin}
+				fitTo={fitTo}
 				myLocation={myLocation}
 			/>
 

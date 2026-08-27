@@ -44,6 +44,7 @@ export default function ActiveTrip() {
 	if (!trip) return <Redirect href="/driver" />
 
 	const waypoints = (trip.route?.waypoints ?? []).map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))
+	const destinationPin = waypoints.length ? { ...waypoints[waypoints.length - 1], label: trip.destination } : null
 
 	const finish = async () => {
 		await endTrip()
@@ -53,7 +54,7 @@ export default function ActiveTrip() {
 	return (
 		<View className="flex-1 bg-surface-canvas">
 			<StatusBar style={statusBar} />
-			<Map vehicles={[]} routeWaypoints={waypoints} fitTo={waypoints} />
+			<Map vehicles={[]} routeWaypoints={waypoints} destinationPin={destinationPin} fitTo={waypoints} />
 
 			<View
 				style={{ top: insets.top + 6, ...elevation.float }}
