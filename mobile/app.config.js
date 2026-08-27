@@ -35,7 +35,24 @@ module.exports = ({ config }) => ({
 		bundler: 'metro',
 		favicon: './src/assets/icon.png'
 	},
-	plugins: ['expo-router'],
+	plugins: [
+		'expo-router',
+		[
+			'expo-camera',
+			{
+				cameraPermission:
+					'Ginagamit ang camera para kunan ng larawan ang lisensya mo para sa beripikasyon.'
+			}
+		],
+		[
+			'expo-location',
+			{
+				// Drivers only, and only while a trip is running.
+				locationAlwaysAndWhenInUsePermission:
+					'Ginagamit ang lokasyon mo habang may biyahe ka para makita ka ng mga pasahero.'
+			}
+		]
+	],
 	extra: {
 		apiUrl: process.env.API_URL,
 		router: {},

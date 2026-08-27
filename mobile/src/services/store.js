@@ -167,6 +167,17 @@ export const useStore = create((set, get) => ({
 		return data.user
 	},
 
+	/** Re-reads the driver, including verification_status — polled by the pending screen. */
+	refreshMe: async () => {
+		try {
+			const driver = await api.fetchMe()
+			set({ driver })
+			return driver
+		} catch {
+			return null
+		}
+	},
+
 	logout: async () => {
 		await api.logoutDriver()
 		await AsyncStorage.removeItem(KEYS.token)
@@ -188,6 +199,13 @@ export const useStore = create((set, get) => ({
 	 * here and nowhere else — this is the app's only GPS permission prompt.
 	 */
 	startTrip: async (destination, routeId) => {
+		// The server refuses an unapproved driver too; this is the local guard so
+		// we never even ask for GPS from someone who cannot broadcast yet.
+		if (get().driver?.verification_status !== 'approved') {
+			get().showToast(copy.pending.notApproved)
+			return null
+		}
+
 		const { status } = await Location.requestForegroundPermissionsAsync()
 		if (status !== 'granted') {
 			get().showToast(copy.settings.locationOff)

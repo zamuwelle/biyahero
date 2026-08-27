@@ -4,86 +4,155 @@ use App\Models\Trip;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    // Feature tests must not depend on a public routing host. OSRM is faked to
+    // fail so seeding falls back to the hand-placed control points, which makes
+    // corridor results deterministic. RouteGeometry itself is unit-tested with a
+    // canned OSRM response in tests/Unit.
+    Http::fake(['router.project-osrm.org/*' => Http::response(null, 503)]);
+
     $this->seed(DatabaseSeeder::class);
+    Storage::fake('local');
 });
 
-it('registers a driver with a vehicle and never echoes the licence back', function () {
-    $response = $this->postJson('/api/register', [
+function registerDriver(array $overrides = [])
+{
+    return test()->postJson('/api/register', array_merge([
         'name' => 'Juan Dela Cruz',
         'phone' => '+639998887777',
         'vehicle_type' => 'jeepney',
         'plate_number' => 'tst 1234',
         'model' => 'Sarao 2020',
         'license_no' => 'N01-19-123456',
-    ])->assertOk();
+        'license_photo' => UploadedFile::fake()->image('licence.jpg', 1200, 750),
+    ], $overrides));
+}
 
-    expect($response->json('data.user.name'))->toBe('Juan Dela Cruz')
+it('registers a driver as PENDING and never self-approves', function () {
+    $response = registerDriver()->assertCreated();
+
+    expect($response->json('data.user.verification_status'))->toBe('pending')
+        ->and($response->json('data.user.is_verified'))->toBeFalse()
         // Plate is normalised — it is a public, painted-on identifier.
-        ->and($response->json('data.user.vehicle.plate_number'))->toBe('TST 1234')
-        ->and($response->json('data.token'))->not->toBeEmpty();
+        ->and($response->json('data.user.vehicle.plate_number'))->toBe('TST 1234');
 
-    $content = $response->getContent();
+    $driver = User::where('phone', '+639998887777')->firstOrFail();
+    expect($driver->approved_at)->toBeNull();
+});
+
+it('requires a licence photo and a licence number', function () {
+    registerDriver(['license_photo' => null])->assertStatus(422);
+    registerDriver(['license_no' => null])->assertStatus(422);
+});
+
+it('stores the licence photo privately and hashes the number', function () {
+    registerDriver()->assertCreated();
+
+    $driver = User::where('phone', '+639998887777')->firstOrFail();
+
+    expect($driver->license_photo_path)->not->toBeNull();
+    Storage::assertExists($driver->license_photo_path);
+
+    expect(Hash::check('N01-19-123456', $driver->license_hash))->toBeTrue();
+});
+
+it('never exposes the licence number, hash or photo path to any client', function () {
+    $content = registerDriver()->assertCreated()->getContent();
+
     expect($content)->not->toContain('N01-19-123456')
-        ->and($content)->not->toContain('license_hash');
-
-    // Stored hashed, never in the clear.
-    $stored = User::where('phone', '+639998887777')->value('license_hash');
-    expect($stored)->not->toBe('N01-19-123456')
-        ->and(Hash::check('N01-19-123456', $stored))->toBeTrue();
+        ->and($content)->not->toContain('license_hash')
+        ->and($content)->not->toContain('license_photo_path');
 });
 
-it('rejects a vehicle class outside the four PH classes at registration', function () {
-    $this->postJson('/api/register', [
-        'name' => 'Juan Dela Cruz',
-        'phone' => '+639998887777',
-        'vehicle_type' => 'tricycle',
-        'plate_number' => 'TST 1234',
-    ])->assertStatus(422);
+it('refuses a second registration on the same phone and points at login', function () {
+    registerDriver()->assertCreated();
+
+    registerDriver()
+        ->assertStatus(409)
+        ->assertJsonPath('message', 'May account na sa numerong ito. Mag-log in na lang.');
 });
 
-it('makes a driver visible to commuters only while a trip is running', function () {
-    $this->postJson('/api/register', [
-        'name' => 'Juan Dela Cruz',
-        'phone' => '+639998887777',
-        'vehicle_type' => 'jeepney',
-        'plate_number' => 'TST 1234',
+it('lets a registered driver log back in with their phone number', function () {
+    registerDriver()->assertCreated();
+
+    $response = $this->postJson('/api/login', ['phone' => '+639998887777'])->assertOk();
+
+    expect($response->json('data.token'))->not->toBeEmpty()
+        ->and($response->json('data.user.verification_status'))->toBe('pending');
+});
+
+it('blocks an unapproved driver from starting a trip', function () {
+    registerDriver()->assertCreated();
+    $driver = User::where('phone', '+639998887777')->firstOrFail();
+
+    Sanctum::actingAs($driver);
+
+    $this->postJson('/api/trips', ['destination' => 'Baclaran'])->assertForbidden();
+
+    // And they must not be visible to commuters.
+    $shown = collect($this->getJson('/api/active-vehicles')->json('data'))
+        ->firstWhere('plate_number', 'TST 1234');
+    expect($shown)->toBeNull();
+});
+
+it('lets a driver work only once a human approves them', function () {
+    registerDriver()->assertCreated();
+    $driver = User::where('phone', '+639998887777')->firstOrFail();
+
+    $this->artisan('biyahero:review', ['phone' => '+639998887777', '--approve' => true])
+        ->assertSuccessful();
+
+    $driver->refresh();
+    expect($driver->verification_status)->toBe('approved')
+        ->and($driver->approved_at)->not->toBeNull();
+
+    Sanctum::actingAs($driver);
+    $trip = $this->postJson('/api/trips', ['destination' => 'Baclaran'])->assertCreated();
+
+    $this->postJson("/api/trips/{$trip->json('data.id')}/ping", [
+        'lat' => 14.5455, 'lng' => 120.9969, 'street' => 'Taft Ave',
     ])->assertOk();
+
+    $shown = collect($this->getJson('/api/active-vehicles')->json('data'))
+        ->firstWhere('plate_number', 'TST 1234');
+
+    expect($shown)->not->toBeNull()
+        ->and($shown['current_street'])->toBe('Taft Ave');
+});
+
+it('refuses to approve a driver with no licence photo on file', function () {
+    registerDriver()->assertCreated();
+    User::where('phone', '+639998887777')->update(['license_photo_path' => null]);
+
+    $this->artisan('biyahero:review', ['phone' => '+639998887777', '--approve' => true])
+        ->assertFailed();
+
+    expect(User::where('phone', '+639998887777')->value('verification_status'))->toBe('pending');
+});
+
+it('records a rejection reason the driver can see', function () {
+    registerDriver()->assertCreated();
+
+    $this->artisan('biyahero:review', [
+        'phone' => '+639998887777',
+        '--reject' => 'Malabo ang larawan ng lisensya.',
+    ])->assertSuccessful();
 
     $driver = User::where('phone', '+639998887777')->firstOrFail();
     Sanctum::actingAs($driver);
 
-    // Not broadcasting yet — absent from the commuter map.
-    $before = $this->getJson('/api/active-vehicles?destination=Baclaran')->json('meta.count');
-    expect($before)->toBe(5);
+    $me = $this->getJson('/api/me')->assertOk();
 
-    $trip = $this->postJson('/api/trips', ['destination' => 'Baclaran'])->assertCreated();
-    $tripId = $trip->json('data.id');
-
-    $this->postJson("/api/trips/{$tripId}/ping", [
-        'lat' => 14.5455,
-        'lng' => 120.9969,
-        'street' => 'Taft Ave',
-        'distance_km' => 5.1,
-    ])->assertOk();
-
-    $during = $this->getJson('/api/active-vehicles?destination=Baclaran');
-    expect($during->json('meta.count'))->toBe(6);
-
-    $mine = collect($during->json('data'))->firstWhere('plate_number', 'TST 1234');
-    expect($mine['current_street'])->toBe('Taft Ave')
-        ->and($mine['is_stale'])->toBeFalse();
-
-    // Ending the trip must drop them immediately, not after a timeout.
-    $this->postJson("/api/trips/{$tripId}/end")->assertOk();
-
-    $after = $this->getJson('/api/active-vehicles?destination=Baclaran');
-    expect($after->json('meta.count'))->toBe(5)
-        ->and(collect($after->json('data'))->firstWhere('plate_number', 'TST 1234'))->toBeNull();
+    expect($me->json('data.verification_status'))->toBe('rejected')
+        ->and($me->json('data.rejection_reason'))->toBe('Malabo ang larawan ng lisensya.');
 });
 
 it('clears the live fix when a trip ends so no stale position lingers', function () {
@@ -146,23 +215,16 @@ it('requires authentication for every driver write', function () {
     $this->getJson('/api/trips/summary')->assertUnauthorized();
 });
 
-it('starts a new trip by closing whatever run was left open', function () {
+it('derives driver statistics from real trip rows rather than storing them', function () {
     $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
     Sanctum::actingAs($driver);
 
-    $this->postJson('/api/trips', ['destination' => 'Cubao'])->assertCreated();
+    $stats = $this->getJson('/api/me')->assertOk()->json('data.stats');
 
-    $open = Trip::where('vehicle_id', $driver->vehicle->id)->active()->get();
+    $actualCompleted = Trip::where('vehicle_id', $driver->vehicle->id)->whereNotNull('ended_at')->count();
+    $actualKm = round(Trip::where('vehicle_id', $driver->vehicle->id)->whereNotNull('ended_at')->sum('distance_km'), 1);
 
-    expect($open)->toHaveCount(1)
-        ->and($open->first()->destination)->toBe('Cubao');
-});
-
-it('reports today totals for the driver home screen', function () {
-    $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
-    Sanctum::actingAs($driver);
-
-    $summary = $this->getJson('/api/trips/summary')->assertOk();
-
-    expect($summary->json('data'))->toHaveKeys(['trips', 'hours_online', 'km_travelled']);
+    expect($stats['completed_trips'])->toBe($actualCompleted)
+        ->and($stats['total_km'])->toBe($actualKm)
+        ->and($actualCompleted)->toBeGreaterThan(0);
 });

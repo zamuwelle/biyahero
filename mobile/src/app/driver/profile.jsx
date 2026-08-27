@@ -51,10 +51,14 @@ export default function DriverProfile() {
 				</View>
 
 				<View className="gap-6 px-6 pt-6">
+					{/* Counted from the trips table, never stored. There is no
+					    on-time figure because nothing records a schedule to
+					    measure against — total distance is real, so it is shown
+					    instead. */}
 					<View className="flex-row gap-3">
-						<StatCard value={(driver.total_trips ?? 0).toLocaleString()} label={copy.driverProfile.totalTrips} />
-						<StatCard value={copy.driverProfile.years(driver.years_on_route ?? 0)} label={copy.driverProfile.onRoute} />
-						<StatCard value={`${driver.on_time_rate ?? 0}%`} label={copy.driverProfile.onTime} />
+						<StatCard value={(driver.stats?.completed_trips ?? 0).toLocaleString()} label={copy.driverProfile.totalTrips} />
+						<StatCard value={copy.driverProfile.years(driver.stats?.years_on_route ?? 0)} label={copy.driverProfile.onRoute} />
+						<StatCard value={`${driver.stats?.total_km ?? 0}`} label={copy.driverProfile.totalKm} />
 					</View>
 
 					<Txt variant="caption" className="text-fg-secondary">{copy.driverProfile.noRatings}</Txt>

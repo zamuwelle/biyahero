@@ -114,8 +114,27 @@ export const fetchEta = ({ routeId, vehicleType, distanceKm }) => {
 
 /* Driver writes — the only place the app ever handles a location. */
 
-export const registerDriver = payload =>
-	client.post('/register', payload).then(res => res.data?.data)
+/**
+ * Multipart, because the licence photo is a real file. The server stores it on
+ * a private disk for a human reviewer and never returns it.
+ */
+export const registerDriver = ({ licencePhotoUri, ...fields }) => {
+	const form = new FormData()
+
+	Object.entries(fields).forEach(([key, value]) => {
+		if (value !== undefined && value !== null && value !== '') form.append(key, String(value))
+	})
+
+	form.append('license_photo', {
+		uri: licencePhotoUri,
+		name: 'licence.jpg',
+		type: 'image/jpeg'
+	})
+
+	return client
+		.post('/register', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 30000 })
+		.then(res => res.data?.data)
+}
 
 export const loginDriver = phone =>
 	client.post('/login', { phone }).then(res => res.data?.data)

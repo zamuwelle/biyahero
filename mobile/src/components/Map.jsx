@@ -1,17 +1,30 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { VehicleGlyph } from './VehicleGlyph'
 import { theme, elevation } from '@/theme/tokens'
 import { MAP_STYLE } from '@/theme/mapStyle'
 
-/** Metro Manila. The commuter pans from here — the app never centres on them. */
-const INITIAL_REGION = {
+/**
+ * Metro Manila, where the demo fleet runs. The commuter pans from here — the app
+ * never centres on them, because it never learns where they are.
+ */
+const DEFAULT_REGION = {
 	latitude: 14.5750,
 	longitude: 121.0000,
 	latitudeDelta: 0.16,
 	longitudeDelta: 0.16
 }
+
+/**
+ * Where the user last panned, remembered on the device only.
+ *
+ * Without this the map reopens over Metro Manila every launch, which is wrong
+ * for anyone living elsewhere. Remembering the last view gives them their own
+ * area back without ever asking for a location permission.
+ */
+const REGION_KEY = 'biyahero.mapRegion'
 
 const VehiclePin = ({ vehicle, selected, onPress }) => (
 	<Marker
@@ -47,8 +60,17 @@ const VehiclePin = ({ vehicle, selected, onPress }) => (
  * figure. Nothing here reads or displays the commuter's own position — there is
  * no myLocation button and no permission request.
  */
-export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo }) => {
+export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo, rememberRegion = false }) => {
 	const mapRef = useRef(null)
+	const [initialRegion, setInitialRegion] = useState(rememberRegion ? null : DEFAULT_REGION)
+
+	useEffect(() => {
+		if (!rememberRegion) return
+
+		AsyncStorage.getItem(REGION_KEY)
+			.then(saved => setInitialRegion(saved ? JSON.parse(saved) : DEFAULT_REGION))
+			.catch(() => setInitialRegion(DEFAULT_REGION))
+	}, [rememberRegion])
 
 	// When a destination narrows the list, frame the matches instead of leaving
 	// the user to hunt for them on a city-wide view.
@@ -62,13 +84,20 @@ export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo
 		})
 	}, [fitTo])
 
+	// Hold the map back until the saved region is known, otherwise it mounts on
+	// the default and visibly jumps.
+	if (!initialRegion) return <View className="flex-1 bg-map-base" />
+
 	return (
 		<View className="flex-1 bg-map-base">
 			<MapView
 				ref={mapRef}
 				provider={PROVIDER_GOOGLE}
 				style={{ flex: 1 }}
-				initialRegion={INITIAL_REGION}
+				initialRegion={initialRegion}
+				onRegionChangeComplete={region => {
+					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(region)).catch(() => {})
+				}}
 				customMapStyle={MAP_STYLE}
 				showsUserLocation={false}
 				showsMyLocationButton={false}

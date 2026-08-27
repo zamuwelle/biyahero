@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { View, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
+import { useRef, useState } from 'react'
+import { View, ScrollView, Image, Pressable, KeyboardAvoidingView, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
+import { CameraView, useCameraPermissions } from 'expo-camera'
 import { MaterialIcons } from '@expo/vector-icons'
 import { Screen } from '@/components/ui/Screen'
 import { Txt } from '@/components/ui/Txt'
@@ -13,26 +14,47 @@ import { theme } from '@/theme/tokens'
 import * as copy from '@/constants/copy'
 
 /**
- * 13 · Licence Capture.
+ * 13 · Licence Capture — a real photo, taken through a framed viewfinder.
  *
- * The capture is a placeholder: it marks the step complete but does not open a
- * camera or run OCR, so the driver confirms the two fields by hand. A real build
- * swaps this frame for expo-camera plus text recognition — the submitted licence
- * number is hashed server-side either way and is never displayed again.
+ * The image is uploaded to a private disk and the registration is left PENDING.
+ * Nothing here approves anybody: a person runs `php artisan biyahero:review`,
+ * looks at the photo, and decides. Until then the driver cannot start a trip.
  */
 export default function LicenceCapture() {
 	const router = useRouter()
 	const draft = useRegistration()
 	const update = useRegistration(s => s.update)
 	const reset = useRegistration(s => s.reset)
+
 	const register = useStore(s => s.register)
 	const registering = useStore(s => s.registering)
 	const showToast = useStore(s => s.showToast)
 
+	const cameraRef = useRef(null)
+	const [permission, requestPermission] = useCameraPermissions()
+	const [capturing, setCapturing] = useState(false)
 	const [error, setError] = useState(null)
 
+	const capture = async () => {
+		if (!cameraRef.current || capturing) return
+		setCapturing(true)
+
+		try {
+			// Modest quality: a licence card is legible well below full sensor
+			// resolution, and this has to upload over mobile data.
+			const photo = await cameraRef.current.takePictureAsync({ quality: 0.6, skipProcessing: true })
+			if (photo?.uri) update({ licencePhotoUri: photo.uri })
+		} catch {
+			showToast(copy.common.genericError)
+		} finally {
+			setCapturing(false)
+		}
+	}
+
 	const submit = async () => {
+		if (!draft.licencePhotoUri) return setError(copy.licence.needPhoto)
 		if (!draft.name.trim()) return setError(copy.licence.invalidName)
+		if (!draft.license_no.trim()) return setError(copy.licence.invalidName)
 		setError(null)
 
 		try {
@@ -41,14 +63,20 @@ export default function LicenceCapture() {
 				phone: `+63${draft.phone.replace(/\D/g, '').replace(/^0/, '')}`,
 				vehicle_type: draft.vehicle_type,
 				plate_number: draft.plate_number.trim(),
-				model: draft.model.trim() || undefined,
-				body_number: draft.body_number.trim() || undefined,
-				license_no: draft.license_no.trim() || undefined
+				model: draft.model.trim(),
+				body_number: draft.body_number.trim(),
+				license_no: draft.license_no.trim(),
+				licencePhotoUri: draft.licencePhotoUri
 			})
 			reset()
 			router.replace('/driver/pending')
-		} catch {
-			showToast(copy.common.genericError)
+		} catch (e) {
+			if (e?.response?.status === 409) {
+				showToast(copy.signUp.alreadyRegistered)
+				router.replace('/driver/login')
+				return
+			}
+			showToast(e?.response?.data?.message ?? copy.common.genericError)
 		}
 	}
 
@@ -60,28 +88,43 @@ export default function LicenceCapture() {
 
 					<Txt variant="bodyM" className="text-fg-secondary">{copy.licence.body}</Txt>
 
-					<View
-						className={`items-center justify-center gap-4 rounded-xl border-2 border-dashed py-10 ${
-							draft.licenceCaptured ? 'border-capacity-open-fg bg-capacity-open-bg' : 'border-line-strong bg-surface-sunken'
-						}`}
-					>
-						<MaterialIcons
-							name={draft.licenceCaptured ? 'check-circle' : 'credit-card'}
-							size={40}
-							color={draft.licenceCaptured ? theme.capacity.open.fg : theme.icon.muted}
-						/>
-						<Txt variant="bodyMStrong" className={draft.licenceCaptured ? 'text-capacity-open-fg' : 'text-fg-secondary'}>
-							{draft.licenceCaptured ? copy.licence.captured : copy.licence.frameHint}
-						</Txt>
-						<Button
-							label={draft.licenceCaptured ? copy.licence.retake : copy.licence.capture}
-							tone="secondary"
-							icon="photo-camera"
-							onPress={() => update({ licenceCaptured: !draft.licenceCaptured })}
-						/>
+					{/* Licence cards are landscape, so the frame is too. */}
+					<View className="aspect-[1.6] overflow-hidden rounded-xl border-2 border-dashed border-line-strong bg-surface-sunken">
+						{draft.licencePhotoUri ? (
+							<Image source={{ uri: draft.licencePhotoUri }} className="h-full w-full" resizeMode="cover" />
+						) : !permission ? (
+							<View className="flex-1 items-center justify-center">
+								<Txt variant="caption" className="text-fg-secondary">{copy.common.loading}</Txt>
+							</View>
+						) : !permission.granted ? (
+							<View className="flex-1 items-center justify-center gap-3 p-6">
+								<MaterialIcons name="photo-camera" size={32} color={theme.icon.muted} />
+								<Txt variant="bodyMStrong" className="text-center text-fg">{copy.licence.permissionTitle}</Txt>
+								<Txt variant="caption" className="text-center text-fg-secondary">{copy.licence.permissionBody}</Txt>
+								<Button label={copy.licence.grant} tone="secondary" onPress={requestPermission} />
+							</View>
+						) : (
+							<CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
+								<View className="flex-1 items-center justify-end p-4">
+									<View className="rounded-full bg-surface-inverse/70 px-3 py-1">
+										<Txt variant="caption" className="text-fg-inverse">{copy.licence.frameHint}</Txt>
+									</View>
+								</View>
+							</CameraView>
+						)}
 					</View>
 
-					{draft.licenceCaptured && (
+					{permission?.granted && (
+						<Button
+							label={draft.licencePhotoUri ? copy.licence.retake : copy.licence.capture}
+							tone="secondary"
+							icon="photo-camera"
+							loading={capturing}
+							onPress={draft.licencePhotoUri ? () => update({ licencePhotoUri: null }) : capture}
+						/>
+					)}
+
+					{!!draft.licencePhotoUri && (
 						<View className="gap-4">
 							<Txt variant="labelS" className="text-fg-secondary">{copy.licence.confirmLabel}</Txt>
 							<Field
@@ -105,12 +148,19 @@ export default function LicenceCapture() {
 					)}
 
 					<View className="flex-1" />
-					<Button
-						label={copy.licence.submit}
-						onPress={submit}
-						loading={registering}
-						disabled={!draft.licenceCaptured || !draft.name.trim()}
-					/>
+
+					<View className="gap-3">
+						<Button
+							label={copy.licence.submit}
+							onPress={submit}
+							loading={registering}
+							disabled={!draft.licencePhotoUri || !draft.name.trim() || !draft.license_no.trim()}
+						/>
+						<View className="flex-row items-start gap-2">
+							<MaterialIcons name="info-outline" size={16} color={theme.icon.secondary} />
+							<Txt variant="caption" className="min-w-0 flex-1 text-fg-secondary">{copy.licence.reviewNote}</Txt>
+						</View>
+					</View>
 				</ScrollView>
 			</KeyboardAvoidingView>
 		</Screen>

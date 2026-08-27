@@ -62,6 +62,7 @@ export default function MapHome() {
 		<View className="flex-1 bg-surface-canvas">
 			<StatusBar style="dark" />
 			<Map
+				rememberRegion
 				vehicles={vehicles}
 				selectedId={selectedVehicleId}
 				onSelect={openVehicle}

@@ -38,7 +38,15 @@ class TripController extends Controller
             'route_id' => 'nullable|integer|exists:routes,id',
         ]);
 
-        $vehicle = $request->user()->vehicle;
+        $driver = $request->user();
+
+        // Verification is the gate: an unapproved driver must not become
+        // visible to commuters, however they reached this endpoint.
+        if (! $driver->isApproved()) {
+            return $this->error('Hindi pa aprubado ang rehistro mo. Maghintay ng abiso.', 403);
+        }
+
+        $vehicle = $driver->vehicle;
         if (! $vehicle) {
             return $this->error('No vehicle registered for this driver.', 404);
         }
@@ -113,9 +121,6 @@ class TripController extends Controller
 
         // Drop the live fix so the vehicle cannot linger on a commuter's map.
         $trip->vehicle->update(['live_lat' => null, 'live_lng' => null, 'last_ping_at' => null]);
-
-        $driver = $request->user();
-        $driver->increment('total_trips');
 
         return $this->success($trip->fresh(), 'Tapos na ang biyahe.');
     }

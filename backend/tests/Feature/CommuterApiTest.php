@@ -4,10 +4,17 @@ use App\Models\Trip;
 use App\Models\Vehicle;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    // Feature tests must not depend on a public routing host. OSRM is faked to
+    // fail so seeding falls back to the hand-placed control points, which makes
+    // corridor results deterministic. RouteGeometry itself is unit-tested with a
+    // canned OSRM response in tests/Unit.
+    Http::fake(['router.project-osrm.org/*' => Http::response(null, 503)]);
+
     $this->seed(DatabaseSeeder::class);
 });
 
@@ -60,8 +67,10 @@ it('corridor-matches a destination to routes that pass within 400 m', function (
     expect($response->json('meta.count'))->toBe(5)
         ->and($response->json('meta.corridor_radius_m'))->toBe(400);
 
+    // The corridor asks "does this route PASS Baclaran", so every match must be
+    // on a Baclaran-serving route — not merely named Baclaran.
     foreach ($response->json('data') as $vehicle) {
-        expect($vehicle['destination'])->toBe('Baclaran');
+        expect($vehicle['route']['label'])->toContain('Baclaran');
     }
 });
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Screen } from '@/components/ui/Screen'
 import { Txt } from '@/components/ui/Txt'
@@ -51,6 +51,9 @@ export default function DriverSignUp() {
 
 					<View className="gap-4">
 						<Button label={copy.signUp.continue} onPress={next} disabled={digits.length < 10} />
+						<Pressable onPress={() => router.push('/driver/login')} className="items-center py-1 active:opacity-70">
+							<Txt variant="bodyMStrong" className="text-fg-secondary">{copy.signUp.haveAccount}</Txt>
+						</Pressable>
 						<Txt variant="caption" className="text-center text-fg-secondary">{copy.signUp.terms}</Txt>
 					</View>
 				</ScrollView>

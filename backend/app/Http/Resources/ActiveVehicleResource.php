@@ -58,7 +58,7 @@ class ActiveVehicleResource extends JsonResource
             'driver' => $driver ? [
                 'name' => $driver->shortName(),
                 'is_verified' => (bool) $driver->is_verified,
-                'years_on_route' => (int) $driver->years_on_route,
+                'years_on_route' => $driver->yearsOnRoute(),
             ] : null,
         ];
     }

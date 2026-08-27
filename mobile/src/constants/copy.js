@@ -118,7 +118,20 @@ export const signUp = {
 	phoneHint: 'Padadalhan ka namin ng 6-digit na code sa SMS.',
 	terms: 'Sa pagpapatuloy, sumasang-ayon ka sa Mga Tuntunin at Patakaran sa Privacy ng Biyahero.',
 	continue: 'Magpatuloy',
-	invalidPhone: 'Kulang ang numero — 10 digit ang kailangan.'
+	invalidPhone: 'Kulang ang numero — 10 digit ang kailangan.',
+	haveAccount: 'Naka-rehistro ka na? Mag-log in',
+	alreadyRegistered: 'May account na sa numerong ito. Mag-log in na lang.'
+}
+
+/** Returning drivers. There is no password — the phone number is the handle. */
+export const login = {
+	eyebrow: 'PAG-LOG IN',
+	title: 'Mag-log in bilang drayber',
+	body: 'Ilagay ang numerong ginamit mo noong nagparehistro ka.',
+	phoneLabel: 'Numero ng telepono',
+	submit: 'Mag-log in',
+	noAccount: 'Wala pang account? Magparehistro',
+	notFound: 'Walang account sa numerong ito.'
 }
 
 export const vehicleDetails = {
@@ -150,6 +163,11 @@ export const licence = {
 	numberLabel: 'NUMERO NG LISENSYA',
 	numberPlaceholder: 'N01-19-123456',
 	invalidName: 'Kailangan ang pangalan sa lisensya.',
+	needPhoto: 'Kailangan ang larawan ng lisensya.',
+	permissionTitle: 'Kailangan ng access sa camera',
+	permissionBody: 'Ginagamit lang ito para kunan ng larawan ang lisensya mo.',
+	grant: 'Payagan ang camera',
+	reviewNote: 'Susuriin ito ng tao bago ka maaprubahan. Hindi ito awtomatiko.',
 	/** Never displayed back to anyone — the design stores a hash, not the number. */
 	hashNote: 'Lisensya: naka-hash, hindi kailanman ipinapakita.'
 }
@@ -163,7 +181,14 @@ export const pending = {
 		{ title: 'Handa ka nang magbiyahe', body: 'Makikita ka na ng mga pasahero kapag aprubado.' }
 	],
 	footnote: 'Habang naghihintay, puwede mo pa ring gamitin ang Biyahero bilang pasahero — isang app lang ito.',
-	useAsCommuter: 'Gamitin bilang pasahero'
+	useAsCommuter: 'Gamitin bilang pasahero',
+	checking: 'Tinitingnan ang estado…',
+	refresh: 'I-refresh ang estado',
+	notApproved: 'Hindi pa aprubado ang rehistro mo.',
+	approvedTitle: 'Aprubado ka na!',
+	approvedBody: 'Makikita ka na ng mga pasahero kapag sinimulan mo ang biyahe.',
+	rejectedTitle: 'Hindi naaprubahan ang rehistro',
+	rejectedBody: 'Suriin ang dahilan sa ibaba at magpadala ulit ng malinaw na larawan ng lisensya.'
 }
 
 export const driverHome = {
@@ -203,7 +228,9 @@ export const activeTrip = {
 export const driverProfile = {
 	totalTrips: 'KABUUANG BIYAHE',
 	onRoute: 'SA RUTA',
-	onTime: 'ON-TIME',
+	/** Replaces the design's ON-TIME figure: nothing records a schedule, so it
+	    could only ever be invented. Distance is derived from real trips. */
+	totalKm: 'KM NABIYAHE',
 	years: n => `${n} taon`,
 	/** Deliberate product decision, surfaced in the UI rather than hidden. */
 	noRatings: 'Walang rating ang Biyahero — anonymous ang mga pasahero, kaya walang mananagot sa mga review.',

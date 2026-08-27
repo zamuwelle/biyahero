@@ -13,7 +13,8 @@ export const useRegistration = create(set => ({
 	model: '',
 	body_number: '',
 	license_no: '',
-	licenceCaptured: false,
+	/** Local file URI of the captured licence photo, uploaded on submit. */
+	licencePhotoUri: null,
 
 	update: patch => set(patch),
 
@@ -26,6 +27,6 @@ export const useRegistration = create(set => ({
 			model: '',
 			body_number: '',
 			license_no: '',
-			licenceCaptured: false
+			licencePhotoUri: null
 		})
 }))

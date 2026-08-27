@@ -1,5 +1,4 @@
 import { View, Pressable } from 'react-native'
-import { MaterialIcons } from '@expo/vector-icons'
 import { Txt } from '@/components/ui/Txt'
 import { Badge } from '@/components/ui/Badge'
 import { VehicleGlyph } from './VehicleGlyph'
@@ -25,10 +24,10 @@ export const DriverVehicleCard = ({ vehicle, verified = false, onEdit }) => {
 					{[VEHICLE_LABELS[vehicle.vehicle_type] ?? vehicle.vehicle_type, vehicle.model].filter(Boolean).join(' · ')}
 				</Txt>
 				<View className="flex-row items-center gap-2">
-					<Txt variant="monoData" className="text-fg-secondary" numberOfLines={1}>{meta}</Txt>
+					{/* The plate line gives up width first; the badge must never clip. */}
+					<Txt variant="monoData" className="min-w-0 flex-1 text-fg-secondary" numberOfLines={1}>{meta}</Txt>
 					{verified && (
-						<View className="flex-row items-center gap-1">
-							<MaterialIcons name="verified" size={16} color={theme.text.success} />
+						<View className="shrink-0">
 							<Badge label="VERIFIED" tone="open" />
 						</View>
 					)}
