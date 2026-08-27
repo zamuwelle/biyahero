@@ -18,10 +18,11 @@ module.exports = ({ config }) => ({
 	},
 	android: {
 		adaptiveIcon: {
-			backgroundColor: '#E6F4FE',
-			foregroundImage: './src/assets/icon.png',
-			backgroundImage: './src/assets/icon.png',
-			monochromeImage: './src/assets/icon.png'
+			// The launcher masks the foreground to its own shape and crops ~28%,
+			// so the artwork is inset on a transparent canvas over a flat white.
+			backgroundColor: '#FFFFFF',
+			foregroundImage: './src/assets/icon-foreground.png',
+			monochromeImage: './src/assets/icon-foreground.png'
 		},
 		package: 'com.anonymous.biyahero',
 		config: {
