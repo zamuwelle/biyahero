@@ -220,6 +220,14 @@ export const useStore = create((set, get) => ({
 			return null
 		}
 
+		// GPS off means the watcher would produce nothing: a driver would look
+		// "live" to themselves while never appearing to a single commuter.
+		const servicesOn = await Location.hasServicesEnabledAsync().catch(() => false)
+		if (!servicesOn) {
+			get().showToast(getCopy().driverHome.locationServicesOff)
+			return null
+		}
+
 		const { status } = await Location.requestForegroundPermissionsAsync()
 		if (status !== 'granted') {
 			get().showToast(getCopy().settings.locationOff)

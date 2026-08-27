@@ -250,6 +250,7 @@ export const driverHome = {
 	hoursOnline: 'ORAS ONLINE',
 	kmTravelled: 'KM NABIYAHE',
 	startTrip: 'Simulan ang biyahe',
+	locationServicesOff: 'Naka-off ang Location (GPS) ng telepono mo. Buksan ito para makapagsimula ng biyahe.',
 	startNote: 'Sisimulan nito ang pagbo-broadcast ng lokasyon mo. Titigil ito kapag tinapos mo ang biyahe.'
 }
 

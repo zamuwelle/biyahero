@@ -197,6 +197,7 @@ export const driverHome = {
 	hoursOnline: 'HOURS ONLINE',
 	kmTravelled: 'KM TRAVELLED',
 	startTrip: 'Start a trip',
+	locationServicesOff: "Your phone's Location (GPS) is off. Turn it on to start a trip.",
 	startNote: 'This starts broadcasting your location. It stops when you end the trip.'
 }
 
