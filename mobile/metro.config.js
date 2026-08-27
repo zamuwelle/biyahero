@@ -12,6 +12,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 	return context.resolveRequest(context, moduleName, platform)
 }
 
+// npm leaves dot-prefixed staging directories inside node_modules (e.g.
+// `.react-native-css-interop-1RWvIT5x`). They are never part of a build, and a
+// half-written one stops Metro's crawler dead rather than being skipped.
+// The character class covers both path separators so this holds on Windows.
+config.resolver.blockList = /node_modules[\\/]\.[^\\/]+[\\/].*/
+
 // Import .svg files as React components so the Figma glyphs stay vector and tintable.
 config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer/expo')
 config.resolver.assetExts = config.resolver.assetExts.filter(ext => ext !== 'svg')

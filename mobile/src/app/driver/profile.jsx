@@ -47,7 +47,13 @@ export default function DriverProfile() {
 					</View>
 					<Avatar name={driver.name} size={88} tone="brand" />
 					<Txt variant="headingL">{driver.name}</Txt>
-					{!!driver.is_verified && <Badge label="VERIFIED" tone="open" />}
+					{/* Badge is self-start by default; wrapping lets the centred
+					    header position it instead of it hugging the left edge. */}
+					{!!driver.is_verified && (
+						<View>
+							<Badge label="VERIFIED" tone="open" />
+						</View>
+					)}
 				</View>
 
 				<View className="gap-6 px-6 pt-6">
@@ -60,8 +66,6 @@ export default function DriverProfile() {
 						<StatCard value={copy.driverProfile.years(driver.stats?.years_on_route ?? 0)} label={copy.driverProfile.onRoute} />
 						<StatCard value={`${driver.stats?.total_km ?? 0}`} label={copy.driverProfile.totalKm} />
 					</View>
-
-					<Txt variant="caption" className="text-fg-secondary">{copy.driverProfile.noRatings}</Txt>
 
 					<View className="gap-3">
 						<Txt variant="labelS" className="text-fg-secondary">{copy.driverProfile.myVehicle}</Txt>
