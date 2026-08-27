@@ -1,68 +1,100 @@
 <?php
- 
+
+use App\Http\Controllers\ActiveVehicleController;
 use App\Http\Controllers\AuthController;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\RadarController;
+use App\Http\Controllers\DestinationController;
 use App\Http\Controllers\EtaController;
-use App\Http\Controllers\CommuterRadarController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\TripController;
+use App\Models\Destination;
 use App\Models\Route as Routes;
 use App\Models\Vehicle;
+use App\Services\CorridorMatcher;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Route;
 
-Route::get('test', fn() => 'wassup');
+Route::get('test', fn () => 'wassup');
+
+/*
+|--------------------------------------------------------------------------
+| Commuter — public, and deliberately position-free
+|--------------------------------------------------------------------------
+| None of these accept a commuter lat/lng. Filtering is by typed destination
+| and vehicle class only, so the app never needs a location permission.
+*/
+Route::get('/active-vehicles', [ActiveVehicleController::class, 'index']);
+Route::get('/active-vehicles/{vehicle}', [ActiveVehicleController::class, 'show']);
+Route::get('/destinations', [DestinationController::class, 'index']);
+
+Route::get('/routes/for-destination', function (Request $request, CorridorMatcher $corridor) {
+    $validated = $request->validate(['destination' => 'required|string|max:120']);
+
+    $place = Destination::query()
+        ->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($validated['destination']).'%'])
+        ->first();
+
+    if (! $place) {
+        return response()->json(['data' => null]);
+    }
+
+    $ids = $corridor->routeIdsNear($place->lat, $place->lng);
+    $route = $ids ? Routes::find($ids[0]) : null;
+
+    return response()->json(['data' => $route]);
+});
+
+Route::get('/routes/{id}', function ($id) {
+    $route = Routes::findOrFail($id);
+
+    return response()->json([
+        'id' => $route->id,
+        'name' => $route->name,
+        'label' => $route->label,
+        'length_km' => $route->length_km,
+        'waypoints' => $route->waypoints,
+    ]);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Driver — authenticated
+|--------------------------------------------------------------------------
+*/
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
-	Route::post('logout', [AuthController::class, 'logout']);
-	Route::get('me', fn() => request()->user());
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('me', [AuthController::class, 'me']);
+
+    Route::get('/trips/current', [TripController::class, 'current']);
+    Route::get('/trips/summary', [TripController::class, 'summary']);
+    Route::post('/trips', [TripController::class, 'store']);
+    Route::patch('/trips/{trip}/capacity', [TripController::class, 'updateCapacity']);
+    Route::post('/trips/{trip}/ping', [TripController::class, 'ping']);
+    Route::post('/trips/{trip}/end', [TripController::class, 'end']);
 });
 
-Route::post('/radar', [RadarController::class, 'index']);
+/*
+|--------------------------------------------------------------------------
+| ETA — driver-facing only
+|--------------------------------------------------------------------------
+| Used for the driver's own "tinatayang 34 min" route preview. It is never
+| surfaced to a commuter as an arrival time, because that would require
+| knowing where the commuter is standing.
+*/
 Route::post('/eta', [EtaController::class, 'index']);
-Route::post('/commuter-radar', [CommuterRadarController::class, 'index']);
 
-Route::get('/routes/{id}', function ($id) {
-	$route = Routes::findOrFail($id);
-	return response()->json([
-		'id' => $route->id,
-		'name' => $route->name,
-		'waypoints' => $route->waypoints,
-	]);
-});
-
-Route::post('/vehicles/{id}/update-location', function (Request $request, $id) {
-	$validated = $request->validate([
-		'lat' => 'nullable|numeric|between:-90,90',
-		'lng' => 'nullable|numeric|between:-180,180',
-	]);
-
-	$vehicle = Vehicle::findOrFail($id);
-	$vehicle->live_lat = $validated['lat'] ?? null;
-	$vehicle->live_lng = $validated['lng'] ?? null;
-	$vehicle->save();
-
-	return response()->json([
-		'status' => 'updated',
-		'vehicle_code' => $vehicle->vehicle_code,
-		'position' => ['lat' => $vehicle->live_lat, 'lng' => $vehicle->live_lng],
-	]);
-});
-
-Route::post('/vehicles/{id}/update-status', function (Request $request, $id) {
-	$validated = $request->validate([
-		'occupancy' => 'required|in:available,moderate,full',
-	]);
-	$vehicle = Vehicle::findOrFail($id);
-	$vehicle->occupancy = $validated['occupancy'];
-	$vehicle->save();
-	return response()->json(['status' => 'updated', 'occupancy' => $vehicle->occupancy]);
-});
-
+/*
+|--------------------------------------------------------------------------
+| Debug
+|--------------------------------------------------------------------------
+*/
 Route::get('/debug/fresh-seed', function () {
-	\Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true]);
-	\Illuminate\Support\Facades\Artisan::call('db:seed', ['--class' => 'DatabaseSeeder', '--force' => true]);
-	return response()->json(['status' => 'Database reset and reseeded']);
+    Artisan::call('migrate:fresh', ['--force' => true]);
+    Artisan::call('db:seed', ['--class' => 'DatabaseSeeder', '--force' => true]);
+
+    return response()->json(['status' => 'Database reset and reseeded']);
 });
 
-Route::get('/debug/vehicles', fn() => Vehicle::all(['id', 'vehicle_code', 'vehicle_type', 'route_id', 'live_lat', 'live_lng', 'current_waypoint_index', 'direction']));
+Route::get('/debug/vehicles', fn () => Vehicle::with('activeTrip')->get());
