@@ -1,156 +1,91 @@
-import { useEffect, useRef, useState } from 'react'
-import { View, Text, Easing } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import MapView, { Marker, Circle, Polyline, AnimatedRegion, PROVIDER_GOOGLE } from 'react-native-maps'
-import { MaterialIcons } from '@expo/vector-icons'
-import { useStore } from '@/services/store'
-import { getRouteWaypoints } from '@/services/api'
-import { IconButton } from '@/components/IconButton'
+import { useEffect, useRef } from 'react'
+import { View } from 'react-native'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
+import { VehicleGlyph } from './VehicleGlyph'
+import { theme, elevation } from '@/theme/tokens'
+import { MAP_STYLE } from '@/theme/mapStyle'
 
-const VehicleMarker = ({ vehicle, isNearest }) => {
-	const markerRef = useRef(null)
-	const animatedCoord = useRef(
-		new AnimatedRegion({
-			latitude: vehicle.position.latitude,
-			longitude: vehicle.position.longitude,
-			latitudeDelta: 0,
-			longitudeDelta: 0
-		})
-	).current
-
-	useEffect(() => {
-		if (vehicle?.position?.latitude == null) return
-		animatedCoord.timing({
-			latitude: vehicle.position.latitude,
-			longitude: vehicle.position.longitude,
-			duration: 1000,
-			easing: Easing.linear,
-			useNativeDriver: false
-		}).start()
-		if (isNearest) {
-			const timer = setTimeout(() => markerRef.current?.showCallout(), 100)
-			return () => clearTimeout(timer)
-		}
-	}, [vehicle.position.latitude, vehicle.position.longitude, isNearest])
-
-	const isNear = vehicle.distance_km <= 0.5
-	const meters = Math.round(vehicle.distance_km * 1000)
-	const eta = vehicle.predicted_eta_minutes < 1 ? 'arriving' : `${Math.round(vehicle.predicted_eta_minutes)} mins`
-	const title = `${eta} · ${meters}m · ${vehicle.vehicle_id}`
-
-	return (
-		<Marker.Animated
-			ref={markerRef}
-			coordinate={animatedCoord}
-			anchor={{ x: 0.5, y: 0.5 }}
-			tracksViewChanges={true}
-			title={title}
-			onPress={() => useStore.getState().setSelectedVehicle(vehicle)}
-		>
-			<View
-				collapsable={false}
-				style={{
-					width: 24,
-					height: 24,
-					borderRadius: 12,
-					backgroundColor: isNear ? '#2563eb' : '#64748b',
-					borderWidth: 2,
-					borderColor: '#ffffff',
-					alignItems: 'center',
-					justifyContent: 'center',
-					elevation: isNear ? 4 : 2
-				}}
-			>
-				<MaterialIcons name="directions-bus" size={14} color="white" />
-			</View>
-		</Marker.Animated>
-	)
+/** Metro Manila. The commuter pans from here — the app never centres on them. */
+const INITIAL_REGION = {
+	latitude: 14.5750,
+	longitude: 121.0000,
+	latitudeDelta: 0.16,
+	longitudeDelta: 0.16
 }
 
-export const Map = ({ showRadar = false, action }) => {
-	const insets = useSafeAreaInsets()
-	const [waypoints, setWaypoints] = useState([])
-	const coords = useStore(s => s.coords)
-	const locationEnabled = useStore(s => s.locationEnabled)
-	const isRadarActive = useStore(s => s.isRadarActive)
-	const vehicles = useStore(s => s.vehicles)
-	const recenter = useStore(s => s.recenter)
-	const initLocation = useStore(s => s.initLocation)
-	const toast = useStore(s => s.toast)
+const VehiclePin = ({ vehicle, selected, onPress }) => (
+	<Marker
+		coordinate={vehicle.position}
+		onPress={onPress}
+		anchor={{ x: 0.5, y: 0.5 }}
+		tracksViewChanges={false}
+		accessibilityLabel={`${vehicle.destination}, ${vehicle.plate_number}`}
+	>
+		<View
+			style={[
+				elevation.float,
+				{
+					borderColor: vehicle.stale ? theme.border.strong : theme.route[1],
+					borderStyle: vehicle.stale ? 'dashed' : 'solid',
+					backgroundColor: selected ? theme.brand.default : theme.surface.default,
+					opacity: vehicle.stale ? 0.75 : 1
+				}
+			]}
+			className="h-11 w-11 items-center justify-center rounded-md border-2"
+		>
+			<VehicleGlyph
+				type={vehicle.vehicle_type}
+				width={24}
+				color={vehicle.stale ? theme.icon.muted : theme.icon.primary}
+			/>
+		</View>
+	</Marker>
+)
 
-	const [centeredOnce, setCenteredOnce] = useState(false)
+/**
+ * Map Canvas. Desaturated on purpose: the map is the ground, vehicles are the
+ * figure. Nothing here reads or displays the commuter's own position — there is
+ * no myLocation button and no permission request.
+ */
+export const Map = ({ vehicles = [], selectedId, onSelect, routeWaypoints, fitTo }) => {
+	const mapRef = useRef(null)
 
+	// When a destination narrows the list, frame the matches instead of leaving
+	// the user to hunt for them on a city-wide view.
 	useEffect(() => {
-		if (locationEnabled) initLocation()
-		else useStore.getState().showToast('Location is turned off')
-		getRouteWaypoints(1).then(d => Array.isArray(d?.waypoints) && setWaypoints(d.waypoints.map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))))
-	}, [locationEnabled])
+		const points = fitTo?.filter(Boolean)
+		if (!points?.length || !mapRef.current) return
 
-	useEffect(() => {
-		if (coords && locationEnabled && !centeredOnce) {
-			recenter(500)
-			setCenteredOnce(true)
-		}
-	}, [coords, locationEnabled])
+		mapRef.current.fitToCoordinates(points, {
+			edgePadding: { top: 120, right: 80, bottom: 380, left: 80 },
+			animated: true
+		})
+	}, [fitTo])
 
 	return (
-		<View className="flex-1 overflow-hidden">
+		<View className="flex-1 bg-map-base">
 			<MapView
-				ref={ref => useStore.setState({ mapRef: ref })}
+				ref={mapRef}
 				provider={PROVIDER_GOOGLE}
-				initialRegion={coords ? {
-					latitude: coords.latitude,
-					longitude: coords.longitude,
-					latitudeDelta: 0.1,
-					longitudeDelta: 0.1
-				} : undefined}
-				style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: -60 }}
-				showsUserLocation={showRadar && locationEnabled}
+				style={{ flex: 1 }}
+				initialRegion={INITIAL_REGION}
+				customMapStyle={MAP_STYLE}
+				showsUserLocation={false}
 				showsMyLocationButton={false}
 				showsCompass={false}
 				toolbarEnabled={false}
-				onMapReady={() => coords && recenter(500)}
+				rotateEnabled={false}
 			>
-				{showRadar && waypoints.length > 0 && (
-					<Polyline
-						coordinates={waypoints}
-						strokeColor="#2563eb"
-						strokeWidth={4}
-					/>
+				{!!routeWaypoints?.length && (
+					<Polyline coordinates={routeWaypoints} strokeColor={theme.route[1]} strokeWidth={5} />
 				)}
 
-				{showRadar && isRadarActive && coords && locationEnabled && (
-					<Circle
-						center={coords}
-						radius={2000}
-						fillColor="rgba(37, 99, 235, 0.08)"
-						strokeColor="rgba(37, 99, 235, 0.35)"
-						strokeWidth={1.5}
-					/>
-				)}
-
-				{showRadar && isRadarActive && locationEnabled && (vehicles || []).map((v, i) => (
-					<VehicleMarker key={v.vehicle_id} vehicle={v} isNearest={i === 0} />
-				))}
-
-				{!showRadar && coords && locationEnabled && (
-					<Marker coordinate={coords} anchor={{ x: 0.5, y: 0.5 }}>
-						<View className="w-8 h-8 rounded-full bg-amber-400 border-2 border-white items-center justify-center shadow-md">
-							<MaterialIcons name="drive-eta" size={18} color="#0f172a" />
-						</View>
-					</Marker>
-				)}
+				{vehicles
+					.filter(v => v.position)
+					.map(v => (
+						<VehiclePin key={v.id} vehicle={v} selected={v.id === selectedId} onPress={() => onSelect?.(v)} />
+					))}
 			</MapView>
-
-			{toast && (
-				<View pointerEvents="none" style={{ bottom: insets.bottom + 96 }} className="absolute self-center px-4 py-2 rounded-2xl bg-slate-900/95 shadow-xl border border-slate-700 items-center z-50">
-					<Text className="text-white text-xs font-black tracking-wide">{toast}</Text>
-				</View>
-			)}
-			<View style={{ bottom: insets.bottom + 80 }} className="absolute right-4 gap-3 z-30">
-				{action}
-				<IconButton name={showRadar ? 'explore' : 'my-location'} size={32} color={showRadar ? '#dc2626' : '#059669'} onPress={() => recenter(500)} />
-			</View>
 		</View>
 	)
 }

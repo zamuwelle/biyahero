@@ -1,0 +1,21 @@
+<svg width="120" height="120" viewBox="28 28 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Logo Mark">
+<g id="Ground=Dark">
+<g clip-path="url(#clip0_1_2)">
+<rect x="28" y="28" width="120" height="120" rx="34" fill="black"/>
+<g id="artwork">
+<path id="cape" d="M94 79.9703C102.155 66.9961 114.387 56.1842 126.62 55.103C135.794 54.0218 140.891 61.5901 139.871 71.3208C135.794 68.0773 130.697 70.2396 129.678 76.7268C134.775 79.9703 135.794 86.4574 130.697 89.701C125.6 85.3763 120.503 87.5386 119.484 94.0258C123.562 98.3505 123.562 104.838 118.465 107C111.329 100.513 102.155 92.9446 94 79.9703Z" fill="#FFC72C"/>
+<rect id="Rectangle" x="62" y="81" width="20" height="10" rx="2" fill="white"/>
+<rect id="Rectangle_2" x="80" y="75" width="34" height="16" rx="3" fill="white"/>
+<circle id="Ellipse" cx="71" cy="96" r="5" fill="white"/>
+<circle id="Ellipse_2" cx="103" cy="96" r="5" fill="white"/>
+</g>
+</g>
+</g>
+</g>
+<defs>
+<clipPath id="clip0_1_2">
+<rect x="28" y="28" width="120" height="120" rx="34" fill="white"/>
+</clipPath>
+</defs>
+</svg>

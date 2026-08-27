@@ -1,39 +1,64 @@
-import { View, Text, TouchableOpacity } from 'react-native'
+import { View, ScrollView } from 'react-native'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { MaterialIcons } from '@expo/vector-icons'
+import { Screen } from '@/components/ui/Screen'
+import { Txt } from '@/components/ui/Txt'
+import { Header } from '@/components/ui/Header'
+import { Row } from '@/components/ui/Row'
+import { Segmented } from '@/components/ui/Segmented'
 import { useStore } from '@/services/store'
+import * as copy from '@/constants/copy'
 
-export default () => {
+/**
+ * 03 · Settings. Reachable from either mode — the role switch is the point of
+ * the screen, since a driver is usually a commuter too.
+ */
+export default function Settings() {
 	const router = useRouter()
-	const locationEnabled = useStore(s => s.locationEnabled)
-	const toggleLocation = useStore(s => s.toggleLocation)
+	const role = useStore(s => s.role)
+	const setRole = useStore(s => s.setRole)
+	const recentSearches = useStore(s => s.recentSearches)
+	const clearSearches = useStore(s => s.clearSearches)
+
+	const switchRole = async next => {
+		if (next === role) return
+		await setRole(next)
+		router.replace(next === 'driver' ? '/driver' : '/commuter')
+	}
 
 	return (
-		<SafeAreaView className="flex-1 bg-slate-100 p-8">
-			<View className="gap-8">
-				<View className="flex-row items-center gap-4">
-					<TouchableOpacity
-						onPress={() => router.back()}
-						activeOpacity={0.75}
-						className="w-12 h-12 rounded-2xl bg-white items-center justify-center border border-slate-200 shadow-sm"
-					>
-						<MaterialIcons name="arrow-back" size={24} color="#0f172a" />
-					</TouchableOpacity>
-					<Text className="text-3xl font-black text-slate-900">Settings</Text>
+		<Screen>
+			<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8 pt-4 gap-8">
+				<Header title={copy.settings.title} />
+
+				<View className="gap-3">
+					<Txt variant="labelS" className="text-fg-secondary">{copy.settings.modeLabel}</Txt>
+					<Segmented
+						value={role ?? 'commuter'}
+						onChange={switchRole}
+						options={[
+							{ value: 'commuter', label: copy.settings.commuter },
+							{ value: 'driver', label: copy.settings.driver }
+						]}
+					/>
 				</View>
 
-				<View className="bg-white border border-slate-200 rounded-3xl p-6 flex-row items-center justify-between shadow-sm">
-					<Text className="text-lg font-black text-slate-900">Location</Text>
-					<TouchableOpacity
-						onPress={toggleLocation}
-						activeOpacity={0.8}
-						className={`w-14 h-8 rounded-full p-1 flex-row items-center ${locationEnabled ? 'bg-amber-500 justify-end' : 'bg-slate-300 justify-start'}`}
-					>
-						<View className="w-6 h-6 rounded-full bg-white shadow-sm" />
-					</TouchableOpacity>
+				<View className="gap-3">
+					<Row title={copy.settings.language} subtitle={copy.settings.languageValue} onPress={() => {}} />
+					<Row title={copy.settings.theme} subtitle={copy.settings.themeValue} onPress={() => {}} />
+					<Row
+						title={copy.settings.location}
+						subtitle={role === 'driver' ? copy.settings.locationOn : copy.settings.locationOff}
+						onPress={() => {}}
+					/>
+					<Row
+						title={copy.settings.clearSearches}
+						subtitle={recentSearches.length ? copy.settings.clearSearchesHint : copy.settings.searchesCleared}
+						onPress={recentSearches.length ? clearSearches : undefined}
+					/>
 				</View>
-			</View>
-		</SafeAreaView>
+
+				<Txt variant="caption" className="text-fg-secondary">{copy.settings.privacy}</Txt>
+			</ScrollView>
+		</Screen>
 	)
 }

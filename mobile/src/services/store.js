@@ -1,167 +1,254 @@
 import { create } from 'zustand'
-import { Vibration } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
-import { updateDriverLocation, fetchLiveVehicles, registerDriver, updateVehicleStatus } from './api'
+import * as api from './api'
+import { PING_INTERVAL_MS } from '@/theme/tokens'
+import * as copy from '@/constants/copy'
 
-let lastAlertedId = null
-let intervalId = null
+const KEYS = { role: 'biyahero.role', token: 'biyahero.token', searches: 'biyahero.searches' }
+const MAX_RECENT = 3
+
+let pollTimer = null
 let broadcastWatcher = null
-let locationWatcher = null
 let toastTimer = null
+let lastStreetLookup = 0
+
+/** Reverse-geocode sparingly — it is rate-limited and the street rarely changes. */
+const STREET_LOOKUP_INTERVAL_MS = 30_000
 
 export const useStore = create((set, get) => ({
-	coords: null,
-	mapRef: null,
-	locationEnabled: true,
-	isRadarActive: false,
-	isBroadcasting: false,
-	vehicleId: 1,
-	vehicles: [],
-	driver: null,
-	occupancy: 'available',
-	vehicleFilter: 'all',
-	searchQuery: '',
-	selectedVehicle: null,
+	/* ---------------------------------------------------------------- shared */
+	role: null,
+	hydrated: false,
 	toast: null,
-	setVehicleFilter: vehicleFilter => {
-		set({ vehicleFilter })
-		get().tick()
-	},
-	setSearchQuery: searchQuery => set({ searchQuery }),
-	setSelectedVehicle: selectedVehicle => set({ selectedVehicle }),
-	showToast: msg => {
+
+	showToast: message => {
 		if (toastTimer) clearTimeout(toastTimer)
-		set({ toast: msg })
-		toastTimer = setTimeout(() => set({ toast: null }), 2000)
+		set({ toast: message })
+		toastTimer = setTimeout(() => set({ toast: null }), 2200)
 	},
-	setOccupancy: occupancy => {
-		set({ occupancy })
-		updateVehicleStatus(get().driver?.vehicle?.id || get().vehicleId, occupancy)
+
+	setRole: async role => {
+		set({ role })
+		await AsyncStorage.setItem(KEYS.role, role)
 	},
-	register: data =>
-		registerDriver(data).then(res => {
-			const driverData = res?.user ? res.user : {
-				name: data.name,
-				phone: data.phone,
-				license_no: data.license_no,
-				is_verified: true,
-				vehicle: {
-					id: 1,
-					vehicle_code: data.plate_number,
-					vehicle_type: data.vehicle_type,
-					plate_number: data.plate_number,
-					model: data.model,
-					occupancy: 'available'
+
+	/** Restore role, driver session and recent searches before the first render. */
+	hydrate: async () => {
+		try {
+			const [role, token, searches] = await Promise.all([
+				AsyncStorage.getItem(KEYS.role),
+				AsyncStorage.getItem(KEYS.token),
+				AsyncStorage.getItem(KEYS.searches)
+			])
+
+			if (token) {
+				api.setAuthToken(token)
+				try {
+					const driver = await api.fetchMe()
+					set({ driver })
+					const trip = await api.fetchCurrentTrip().catch(() => null)
+					if (trip) set({ trip, isBroadcasting: true })
+				} catch {
+					// Token no longer valid — drop it rather than half-restoring a session.
+					await AsyncStorage.removeItem(KEYS.token)
+					api.setAuthToken(null)
 				}
 			}
-			set({ driver: driverData, vehicleId: driverData.vehicle?.id || 1 })
-			get().showToast('Registration complete')
-			return driverData
-		}),
-	logout: () => set({ driver: null, isBroadcasting: false }),
-	toggleLocation: () => {
-		const next = !get().locationEnabled
-		set({ locationEnabled: next, ...(next ? {} : { coords: null, vehicles: [], isRadarActive: false, isBroadcasting: false }) })
-		if (next) get().initLocation()
-		else {
-			if (locationWatcher) {
-				locationWatcher.remove()
-				locationWatcher = null
-			}
-			if (broadcastWatcher) {
-				broadcastWatcher.remove()
-				broadcastWatcher = null
-			}
-			if (intervalId) {
-				clearInterval(intervalId)
-				intervalId = null
-			}
-			lastAlertedId = null
+
+			set({
+				role: role ?? null,
+				recentSearches: searches ? JSON.parse(searches) : [],
+				hydrated: true
+			})
+		} catch {
+			set({ hydrated: true })
 		}
 	},
-	setVehicleId: vehicleId => {
-		set({ vehicleId })
-		get().showToast(`Vehicle ${vehicleId} selected`)
+
+	/* ------------------------------------------------------------- commuter */
+	// No coords, no permission, no radius. The only filters are a typed
+	// destination and a vehicle class.
+	vehicles: [],
+	activeCount: 0,
+	loading: false,
+	error: null,
+	destination: null,
+	vehicleFilter: 'all',
+	selectedVehicleId: null,
+	recentSearches: [],
+
+	setVehicleFilter: filter => {
+		set({ vehicleFilter: filter })
+		get().refresh()
 	},
-	toggleRadar: () => {
-		const next = !get().isRadarActive
-		if (next) {
-			get().startRadar()
-		} else {
-			get().stopRadar()
-		}
-		get().showToast(next ? 'Radar Scanning (2.0 km)' : 'Radar Inactive')
+
+	setDestination: async destination => {
+		set({ destination, selectedVehicleId: null })
+		if (destination) await get().rememberSearch(destination)
+		get().refresh()
 	},
-	toggleBroadcast: () => {
-		if (!get().locationEnabled) {
-			get().showToast('Enable location to broadcast')
-			return
+
+	clearDestination: () => {
+		set({ destination: null, selectedVehicleId: null })
+		get().refresh()
+	},
+
+	selectVehicle: selectedVehicleId => set({ selectedVehicleId }),
+
+	/** Recent searches live on the device only — never sent to the server. */
+	rememberSearch: async destination => {
+		const next = [destination, ...get().recentSearches.filter(d => d.name !== destination.name)].slice(0, MAX_RECENT)
+		set({ recentSearches: next })
+		await AsyncStorage.setItem(KEYS.searches, JSON.stringify(next))
+	},
+
+	clearSearches: async () => {
+		set({ recentSearches: [] })
+		await AsyncStorage.removeItem(KEYS.searches)
+		get().showToast(copy.settings.searchesCleared)
+	},
+
+	refresh: async () => {
+		const { destination, vehicleFilter } = get()
+		set({ loading: true })
+
+		try {
+			const { vehicles, meta } = await api.fetchActiveVehicles({
+				destination: destination?.name,
+				vehicleType: vehicleFilter
+			})
+			set({ vehicles, activeCount: meta.count ?? vehicles.length, error: null })
+		} catch {
+			set({ error: copy.common.offline })
+		} finally {
+			set({ loading: false })
 		}
-		const willBroadcast = !get().isBroadcasting
-		set({ isBroadcasting: willBroadcast })
-		get().showToast(willBroadcast ? 'Live' : 'Broadcast Stopped')
-		if (willBroadcast) {
-			Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 1 }, loc => {
+	},
+
+	startPolling: () => {
+		if (pollTimer) clearInterval(pollTimer)
+		get().refresh()
+		// 8 s, matching the driver broadcast interval — polling faster would only
+		// re-render the same pings.
+		pollTimer = setInterval(() => get().refresh(), PING_INTERVAL_MS)
+	},
+
+	stopPolling: () => {
+		if (pollTimer) clearInterval(pollTimer)
+		pollTimer = null
+	},
+
+	/* --------------------------------------------------------------- driver */
+	driver: null,
+	trip: null,
+	summary: null,
+	isBroadcasting: false,
+	registering: false,
+
+	register: async payload => {
+		set({ registering: true })
+		try {
+			const data = await api.registerDriver(payload)
+			api.setAuthToken(data.token)
+			await AsyncStorage.setItem(KEYS.token, data.token)
+			set({ driver: data.user })
+			return data.user
+		} finally {
+			set({ registering: false })
+		}
+	},
+
+	login: async phone => {
+		const data = await api.loginDriver(phone)
+		api.setAuthToken(data.token)
+		await AsyncStorage.setItem(KEYS.token, data.token)
+		set({ driver: data.user })
+		return data.user
+	},
+
+	logout: async () => {
+		await api.logoutDriver()
+		await AsyncStorage.removeItem(KEYS.token)
+		api.setAuthToken(null)
+		get().stopBroadcast()
+		set({ driver: null, trip: null, summary: null })
+	},
+
+	loadSummary: async () => {
+		try {
+			set({ summary: await api.fetchTripSummary() })
+		} catch {
+			set({ summary: null })
+		}
+	},
+
+	/**
+	 * Starting a trip is what makes the driver visible. Location capture begins
+	 * here and nowhere else — this is the app's only GPS permission prompt.
+	 */
+	startTrip: async (destination, routeId) => {
+		const { status } = await Location.requestForegroundPermissionsAsync()
+		if (status !== 'granted') {
+			get().showToast(copy.settings.locationOff)
+			return null
+		}
+
+		const trip = await api.startTrip(destination, routeId)
+		set({ trip, isBroadcasting: true })
+		await get().beginBroadcast(trip.id)
+		return trip
+	},
+
+	beginBroadcast: async tripId => {
+		if (broadcastWatcher) broadcastWatcher.remove()
+
+		broadcastWatcher = await Location.watchPositionAsync(
+			{ accuracy: Location.Accuracy.High, timeInterval: PING_INTERVAL_MS, distanceInterval: 20 },
+			async loc => {
 				if (!loc?.coords) return
-				set({ coords: loc.coords })
-				updateDriverLocation(get().vehicleId, loc.coords.latitude, loc.coords.longitude)
-			}).then(watcher => { broadcastWatcher = watcher }).catch(() => {})
-		} else {
-			if (broadcastWatcher) {
-				broadcastWatcher.remove()
-				broadcastWatcher = null
+				const { latitude, longitude } = loc.coords
+
+				let street
+				if (Date.now() - lastStreetLookup > STREET_LOOKUP_INTERVAL_MS) {
+					lastStreetLookup = Date.now()
+					try {
+						const [place] = await Location.reverseGeocodeAsync({ latitude, longitude })
+						street = place?.street || place?.name || place?.district || undefined
+					} catch {
+						// A failed lookup just means the card keeps the previous street.
+					}
+				}
+
+				api.pingTrip(tripId, { latitude, longitude, street }).catch(() => {})
 			}
-			updateDriverLocation(get().vehicleId, null, null)
+		)
+	},
+
+	setCapacity: async capacity => {
+		const { trip } = get()
+		if (!trip) return
+		set({ trip: { ...trip, capacity } })
+		try {
+			await api.setTripCapacity(trip.id, capacity)
+		} catch {
+			get().showToast(copy.common.genericError)
 		}
 	},
+
+	endTrip: async () => {
+		const { trip } = get()
+		get().stopBroadcast()
+		if (trip) await api.endTrip(trip.id).catch(() => {})
+		set({ trip: null, isBroadcasting: false })
+		get().loadSummary()
+	},
+
 	stopBroadcast: () => {
 		if (broadcastWatcher) {
 			broadcastWatcher.remove()
 			broadcastWatcher = null
 		}
-		updateDriverLocation(get().vehicleId, null, null)
 		set({ isBroadcasting: false })
-	},
-	recenter: (duration = 500) => get().coords && get().mapRef?.animateToRegion({ latitude: get().coords.latitude, longitude: get().coords.longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }, duration),
-	tick: () => {
-		const { coords, isRadarActive, vehicleFilter } = get()
-		if (!isRadarActive || !coords) return
-		fetchLiveVehicles(coords.latitude, coords.longitude, 2.0, vehicleFilter).then(list => {
-			const nearest = list[0]
-			if (nearest && nearest.distance_km <= 0.35 && lastAlertedId !== nearest.vehicle_id) {
-				lastAlertedId = nearest.vehicle_id
-				Vibration.vibrate([0, 200, 100, 200])
-			} else if (nearest && nearest.distance_km > 0.6) {
-				lastAlertedId = null
-			}
-			set({ vehicles: list })
-		}).catch(() => {})
-	},
-	startRadar: () => {
-		if (intervalId) clearInterval(intervalId)
-		set({ isRadarActive: true })
-		get().tick()
-		intervalId = setInterval(() => get().tick(), 1000)
-	},
-	stopRadar: () => {
-		if (intervalId) {
-			clearInterval(intervalId)
-			intervalId = null
-		}
-		Vibration.cancel()
-		lastAlertedId = null
-		set({ vehicles: [], isRadarActive: false })
-	},
-	initLocation: () => {
-		if (!get().locationEnabled) return Promise.resolve(false)
-		return Location.requestForegroundPermissionsAsync().then(({ status }) => {
-			if (status !== 'granted') return false
-			Location.getLastKnownPositionAsync().then(loc => loc?.coords && set({ coords: loc.coords })).catch(() => {})
-			Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then(loc => loc?.coords && set({ coords: loc.coords })).catch(() => {})
-			Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 2000, distanceInterval: 1 }, loc => loc?.coords && set({ coords: loc.coords })).then(w => { locationWatcher = w }).catch(() => {})
-			return true
-		}).catch(() => false)
 	}
 }))
-
-useStore.getState().initLocation()

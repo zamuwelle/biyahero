@@ -1,0 +1,11 @@
+<svg width="26" height="18" viewBox="0 0 26 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Vehicle Glyph">
+<g id="Type=Jeepney">
+<rect id="Rectangle" y="7" width="10" height="5" rx="1" fill="currentColor"/>
+<rect id="Rectangle_2" x="9" y="4" width="17" height="8" rx="1.5" fill="currentColor"/>
+<rect id="Rectangle_3" opacity="0.3" x="18" y="4" width="4" height="8" rx="0.5" fill="currentColor"/>
+<circle id="Ellipse" cx="4.5" cy="14.5" r="2.5" fill="currentColor"/>
+<circle id="Ellipse_2" cx="20.5" cy="14.5" r="2.5" fill="currentColor"/>
+</g>
+</g>
+</svg>

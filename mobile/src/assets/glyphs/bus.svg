@@ -1,0 +1,11 @@
+<svg width="26" height="18" viewBox="0 0 26 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Vehicle Glyph">
+<g id="Type=Bus">
+<rect id="Rectangle" y="1" width="26" height="12" rx="2" fill="currentColor"/>
+<rect id="Rectangle_2" opacity="0.32" x="2.5" y="3" width="10" height="3.5" rx="1" fill="currentColor"/>
+<rect id="Rectangle_3" opacity="0.32" x="14" y="3" width="10" height="3.5" rx="1" fill="currentColor"/>
+<circle id="Ellipse" cx="5.25" cy="14.75" r="2.25" fill="currentColor"/>
+<circle id="Ellipse_2" cx="20.75" cy="14.75" r="2.25" fill="currentColor"/>
+</g>
+</g>
+</svg>
