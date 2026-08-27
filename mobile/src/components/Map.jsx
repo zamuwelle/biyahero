@@ -28,28 +28,18 @@ const DEFAULT_REGION = {
 const REGION_KEY = 'biyahero.mapRegion'
 
 const VehiclePin = ({ vehicle, selected, onPress }) => {
-	const { theme, scheme } = useTheme()
-
-	/**
-	 * Android + custom marker views: with tracksViewChanges permanently false,
-	 * the marker snapshots its view BEFORE the glyph has drawn and renders
-	 * invisible — intermittently, since it is a race. Track until the view has
-	 * had time to draw, then freeze for performance; re-arm whenever anything
-	 * that changes the pin's appearance changes.
-	 */
-	const [tracks, setTracks] = useState(true)
-	useEffect(() => {
-		setTracks(true)
-		const timer = setTimeout(() => setTracks(false), 900)
-		return () => clearTimeout(timer)
-	}, [selected, vehicle.stale, vehicle.vehicle_type, scheme])
+	const { theme } = useTheme()
 
 	return (
 	<Marker
 		coordinate={vehicle.position}
 		onPress={onPress}
 		anchor={{ x: 0.5, y: 0.5 }}
-		tracksViewChanges={tracks}
+		// Permanently true. Android snapshots custom marker views, and every
+		// timed freeze-after-mount heuristic lost the race on cold start,
+		// leaving an empty map. With ~a dozen markers the re-snapshot cost is
+		// nothing; an invisible fleet is everything.
+		tracksViewChanges={true}
 		accessibilityLabel={`${vehicle.destination}, ${vehicle.plate_number}`}
 	>
 		<View
