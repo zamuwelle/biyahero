@@ -38,19 +38,25 @@ class PoiFinder
     private const MAX_SPAN = 0.30;
 
     /**
-     * OSM tags worth drawing, and the icon family each maps to. Wide on
-     * purpose: the ask was for the map to know what is actually there, and a
-     * poblacion is mostly sari-sari stores, pawnshops and clinics. What each
-     * one is worth once the screen runs out of room is PRIORITY's job, below.
+     * What Biyahero draws, by OSM tag.
      *
-     * @var array<string, array{kinds: array<string, string>}>
+     * `shop` and `office` take ANY value, because that is where a Philippine
+     * poblacion actually lives — a survey over Tarlac came back 91 sari-sari
+     * stores, 23 pawnshops, 18 phone shops, water refilling stations, Bayad
+     * Centers. Enumerating those was always going to miss the next one, and a
+     * shop we have no icon for is still a shop worth a pin.
+     *
+     * `amenity` and the rest need an allowlist: that tag also carries benches,
+     * waste baskets and bicycle parking, none of which is a place you go.
+     *
+     * @var array<string, array{allow: array<string, string>, default?: string}>
      */
     private const TAGS = [
         'public_transport' => [
-            'kinds' => ['station' => 'terminal'],
+            'allow' => ['station' => 'terminal'],
         ],
         'amenity' => [
-            'kinds' => [
+            'allow' => [
                 'bus_station' => 'terminal',
                 'ferry_terminal' => 'terminal',
                 'hospital' => 'hospital',
@@ -63,7 +69,9 @@ class PoiFinder
                 'university' => 'school',
                 'college' => 'school',
                 'kindergarten' => 'school',
+                'childcare' => 'school',
                 'library' => 'school',
+                'driving_school' => 'school',
                 'place_of_worship' => 'worship',
                 'marketplace' => 'market',
                 'townhall' => 'government',
@@ -72,50 +80,78 @@ class PoiFinder
                 'fire_station' => 'government',
                 'post_office' => 'government',
                 'community_centre' => 'government',
+                'social_facility' => 'government',
                 'fuel' => 'fuel',
                 'bank' => 'bank',
                 'atm' => 'bank',
                 'bureau_de_change' => 'bank',
+                // Remittance and bills counters. A Bayad Center is a landmark
+                // and an errand at once, which is most of why anyone rides.
                 'money_transfer' => 'bank',
+                'payment_centre' => 'bank',
                 'restaurant' => 'food',
                 'cafe' => 'food',
                 'fast_food' => 'food',
+                'food_court' => 'food',
                 'ice_cream' => 'food',
+                'bar' => 'food',
+                'pub' => 'food',
+                'internet_cafe' => 'store',
+                'car_wash' => 'store',
+                'cinema' => 'park',
+                'theatre' => 'park',
             ],
         ],
         'shop' => [
-            'kinds' => [
-                'mall' => 'store',
-                'department_store' => 'store',
-                'supermarket' => 'store',
-                'convenience' => 'store',
-                'variety_store' => 'store',
-                'general' => 'store',
-                'hardware' => 'store',
-                'doityourself' => 'store',
-                'electronics' => 'store',
-                'mobile_phone' => 'store',
-                'clothes' => 'store',
-                'furniture' => 'store',
-                'optician' => 'store',
-                'butcher' => 'store',
-                'greengrocer' => 'store',
-                'car_repair' => 'store',
-                'motorcycle' => 'store',
+            'default' => 'store',
+            'allow' => [
+                'bakery' => 'food',
+                'confectionery' => 'food',
+                'deli' => 'food',
+                'butcher' => 'food',
+                'greengrocer' => 'food',
+                'seafood' => 'food',
+                'tea' => 'food',
+                'coffee' => 'food',
                 'chemist' => 'pharmacy',
+                'medical_supply' => 'pharmacy',
+                'optician' => 'pharmacy',
                 // Pawnshops and remittance counters are landmarks here — an
                 // M Lhuillier on the corner is how a whole barangay gives
                 // directions, whatever Google's category list thinks.
                 'pawnbroker' => 'bank',
                 'money_lender' => 'bank',
-                'bakery' => 'food',
+                'money_transfer' => 'bank',
+                'mall' => 'mall',
+                'department_store' => 'mall',
+                'supermarket' => 'mall',
             ],
         ],
+        'office' => [
+            'default' => 'store',
+            'allow' => ['government' => 'government'],
+        ],
         'tourism' => [
-            'kinds' => ['hotel' => 'hotel', 'motel' => 'hotel', 'guest_house' => 'hotel', 'attraction' => 'park', 'museum' => 'park'],
+            'allow' => [
+                'hotel' => 'hotel',
+                'motel' => 'hotel',
+                'guest_house' => 'hotel',
+                'hostel' => 'hotel',
+                'resort' => 'hotel',
+                'attraction' => 'park',
+                'museum' => 'park',
+                'viewpoint' => 'park',
+            ],
         ],
         'leisure' => [
-            'kinds' => ['park' => 'park', 'stadium' => 'park', 'sports_centre' => 'park'],
+            'allow' => [
+                'park' => 'park',
+                'stadium' => 'park',
+                'sports_centre' => 'park',
+                'fitness_centre' => 'park',
+                'playground' => 'park',
+                'swimming_pool' => 'park',
+            ],
         ],
     ];
 
@@ -133,19 +169,22 @@ class PoiFinder
         'hospital' => 1,
         'market' => 1,
         'government' => 2,
-        'store' => 2,
+        'mall' => 2,
         'park' => 3,
         'fuel' => 3,
         'pharmacy' => 4,
         'bank' => 4,
+        // Now that any named shop qualifies, "store" is mostly sari-sari
+        // stores and repair shops. Worth a pin, not worth a terminal's slot.
         'hotel' => 5,
+        'store' => 5,
         'food' => 6,
     ];
 
     /**
      * @return array<array{id: string, name: string, kind: string, lat: float, lng: float}>
      */
-    public function inBox(float $south, float $west, float $north, float $east, int $limit = 60): array
+    public function inBox(float $south, float $west, float $north, float $east, int $limit = 150): array
     {
         if ($north <= $south || $east <= $west) {
             return [];
@@ -184,18 +223,19 @@ class PoiFinder
 
         $clauses = [];
         foreach (self::TAGS as $tag => $spec) {
-            $values = implode('|', array_keys($spec['kinds']));
-            $clauses[] = sprintf('nwr["name"]["%s"~"^(%s)$"](%s);', $tag, $values, $bbox);
+            $clauses[] = isset($spec['default'])
+                ? sprintf('nwr["name"]["%s"](%s);', $tag, $bbox)
+                : sprintf('nwr["name"]["%s"~"^(%s)$"](%s);', $tag, implode('|', array_keys($spec['allow'])), $bbox);
         }
 
         // `out tags center` gives one point per element, so a mall mapped as a
         // building outline arrives as a single pin like a shop mapped as a dot.
-        $ql = "[out:json][timeout:20];\n(\n".implode("\n", $clauses)."\n);\nout tags center 400;";
+        $ql = "[out:json][timeout:40];\n(\n".implode("\n", $clauses)."\n);\nout tags center 900;";
 
         try {
             $res = Http::asForm()
                 ->withHeaders(['User-Agent' => 'biyahero-hackathon/1.0'])
-                ->timeout(25)
+                ->timeout(50)
                 ->post(self::ENDPOINT, ['data' => $ql]);
 
             if (! $res->ok() || ! is_array($res->json('elements'))) {
@@ -239,8 +279,13 @@ class PoiFinder
         $kind = null;
         foreach (self::TAGS as $tag => $spec) {
             $value = $tags[$tag] ?? null;
-            if ($value !== null && isset($spec['kinds'][$value])) {
-                $kind = $spec['kinds'][$value];
+            if ($value === null || $value === 'no') {
+                continue;
+            }
+
+            // An open tag keeps anything named; an allowlist keeps its own.
+            $kind = $spec['allow'][$value] ?? ($spec['default'] ?? null);
+            if ($kind !== null) {
                 break;
             }
         }

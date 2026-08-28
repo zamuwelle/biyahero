@@ -34,9 +34,14 @@ function overpassFake(): void
                 // No name: unplaceable on a map, and must not reach the client.
                 ['type' => 'node', 'id' => 14, 'lat' => 15.574, 'lon' => 120.682,
                     'tags' => ['amenity' => 'pharmacy']],
-                // A tag we do not draw.
+                // amenity carries street furniture too, and a bench is not a
+                // place you go.
                 ['type' => 'node', 'id' => 15, 'lat' => 15.575, 'lon' => 120.683,
                     'tags' => ['name' => 'Some Bench', 'amenity' => 'bench']],
+                // A shop value we have no icon for. It is still a shop, and a
+                // poblacion is mostly shops — it must not be dropped.
+                ['type' => 'node', 'id' => 16, 'lat' => 15.576, 'lon' => 120.684,
+                    'tags' => ['name' => 'Nena Water Refilling', 'shop' => 'water']],
             ],
         ]),
     ]);
@@ -51,14 +56,17 @@ it('draws the places inside a viewport, most useful first', function () {
 
     // A JSON list, not an object keyed by row index — the app maps over it.
     expect(array_is_list($rows))->toBeTrue()
-        // The terminal outranks the mall, which outranks the bakery. A jeepney
-        // terminal is the whole point of the app; a bakery is scenery.
+        // Ranked by how much a commuter needs it, because the screen runs out
+        // of room long before the places do: terminal, then mall, then the
+        // ordinary shop, then the bakery. A terminal is the whole point of the
+        // app; a bakery is scenery.
         ->and(array_column($rows, 'name'))->toBe([
             'Victoria Jeepney Terminal',
             'SM Victoria',
+            'Nena Water Refilling',
             'Aling Nena Bakery',
         ])
-        ->and(array_column($rows, 'kind'))->toBe(['terminal', 'store', 'food'])
+        ->and(array_column($rows, 'kind'))->toBe(['terminal', 'mall', 'store', 'food'])
         // A way carries its point in `center`; it must arrive placed like a node.
         ->and($rows[1]['lat'])->toBe(15.571)
         ->and($rows[1]['lng'])->toBe(120.679)

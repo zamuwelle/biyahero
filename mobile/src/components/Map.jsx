@@ -171,6 +171,7 @@ const PLACE_ICONS = {
 	school: 'school',
 	hospital: 'local-hospital',
 	market: 'storefront',
+	mall: 'local-mall',
 	government: 'account-balance',
 	store: 'shopping-bag',
 	park: 'park',
@@ -187,19 +188,30 @@ const PLACE_ICONS = {
  * more of them: detail arrives as you zoom, which is the behaviour people
  * already expect from a map.
  */
-const PLACE_MAX_DELTA = 0.09
-const PLACE_NEAR_DELTA = 0.02
-const PLACE_CAP_FAR = 14
-const PLACE_CAP_NEAR = 28
+const PLACE_MAX_DELTA = 0.11
+const PLACE_NEAR_DELTA = 0.05
 
 /**
- * How much of the viewport one pin claims, so two of them cannot print their
- * names over each other. Google runs a label collision engine; this is the
- * cheap version of the same idea, and it is why a dense poblacion reads as a
- * handful of legible places instead of a pile of overlapping text.
+ * Two tiers, which is how every real map fits a town onto a phone: the places
+ * worth naming get a name, everything else gets a dot until you zoom in. A
+ * named pin is 52dp of screen and cannot crowd; a dot is 22dp and can sit
+ * close to its neighbours, so most of the density lives in the dot tier.
+ */
+const PLACE_LABEL_CAP_FAR = 10
+const PLACE_LABEL_CAP_NEAR = 20
+const PLACE_DOT_CAP_FAR = 30
+const PLACE_DOT_CAP_NEAR = 55
+
+/**
+ * How much of the viewport one pin claims, so two of them cannot print over
+ * each other. Google runs a label collision engine; this is the cheap version
+ * of the same idea, and it is why a dense poblacion reads as legible places
+ * instead of a pile of overlapping text.
  */
 const PLACE_CLEAR_X = 0.13
-const PLACE_CLEAR_Y = 0.08
+const PLACE_CLEAR_Y = 0.085
+const PLACE_DOT_CLEAR_X = 0.042
+const PLACE_DOT_CLEAR_Y = 0.030
 
 /** Panning settles before we ask — a drag must not fire a request per frame. */
 const PLACE_DEBOUNCE_MS = 600
@@ -238,75 +250,90 @@ const PLACE_SETTLE_MS = 900
 /**
  * One place from Biyahero's own layer.
  *
- * 52dp square, because that is what this stack can actually draw. A custom
- * marker view is rasterised into a bitmap that will not grow past roughly
- * 60dp: a bare 200x36 test box came back as a ragged 100x100 blob, which is
- * why the old label chips were half-drawn. So the name is set in 8pt over two
- * lines and truncated, and Android's own info window carries it in full on
- * tap — that one is drawn by the OS and is not subject to the cap.
+ * Named at 52dp square, or a bare 20dp dot. 52dp is what this stack can
+ * actually draw: a custom marker view is rasterised into a bitmap that will
+ * not grow past roughly 60dp — a bare 200x36 test box came back a ragged
+ * 100x100 blob, which is why the old label chips were half-drawn. So the name
+ * is set in 8pt over two lines and truncated, and Android's own info window
+ * carries it in full on tap for both tiers; that one is drawn by the OS and is
+ * not subject to the cap.
  *
  * Under the fleet on purpose. These are the ground the jeepneys move over.
  */
-const PlacePin = memo(({ place, redraw, mapType }) => {
+const PlacePin = memo(({ place, labelled, redraw, mapType }) => {
 	const { theme, scheme } = useTheme()
 	const terminal = place.kind === 'terminal'
 	// Dark ink on a pale grid, white on aerial photography — the same swap
 	// Google makes, because neither reads on the other's background.
 	const onImagery = mapType === 'hybrid'
 
+	const badge = (
+		<View
+			style={[
+				elevation.float,
+				{
+					width: labelled ? 26 : 20,
+					height: labelled ? 26 : 20,
+					borderRadius: labelled ? 13 : 10,
+					alignItems: 'center',
+					justifyContent: 'center',
+					backgroundColor: theme.surface.default,
+					borderColor: terminal ? theme.route[1] : theme.border.subtle,
+					borderWidth: terminal ? 2 : 1
+				}
+			]}
+		>
+			<MaterialIcons
+				name={PLACE_ICONS[place.kind] ?? 'place'}
+				size={labelled ? 15 : 12}
+				color={terminal ? theme.route[1] : theme.icon.secondary}
+			/>
+		</View>
+	)
+
 	return (
 		<SettledMarker
 			coordinate={place.position}
 			anchor={{ x: 0.5, y: 0.5 }}
-			zIndex={terminal ? 50 : 40}
-			redrawKey={`${scheme}|${mapType}|${redraw}`}
+			zIndex={terminal ? 50 : labelled ? 40 : 35}
+			redrawKey={`${scheme}|${mapType}|${labelled}|${redraw}`}
 			settleMs={PLACE_SETTLE_MS}
-			// Android draws this itself, so the name is safe from the bitmap cap.
+			// Android draws this itself, so the name is safe from the bitmap
+			// cap — and it is the only way a dot says what it is.
 			title={place.name}
 			accessibilityLabel={place.name}
 		>
-			<View collapsable={false} style={{ width: 52, height: 52, alignItems: 'center' }}>
-				<View
-					style={[
-						elevation.float,
-						{
-							width: 26,
-							height: 26,
-							borderRadius: 13,
-							alignItems: 'center',
-							justifyContent: 'center',
-							backgroundColor: theme.surface.default,
-							borderColor: terminal ? theme.route[1] : theme.border.subtle,
-							borderWidth: terminal ? 2 : 1
-						}
-					]}
-				>
-					<MaterialIcons
-						name={PLACE_ICONS[place.kind] ?? 'place'}
-						size={15}
-						color={terminal ? theme.route[1] : theme.icon.secondary}
-					/>
+			{labelled ? (
+				<View collapsable={false} style={{ width: 52, height: 52, alignItems: 'center' }}>
+					{badge}
+					<Txt
+						numberOfLines={2}
+						style={{
+							width: 52,
+							marginTop: 1,
+							textAlign: 'center',
+							fontSize: 8,
+							lineHeight: 9,
+							color: onImagery ? '#FFFFFF' : theme.text.primary,
+							textShadowColor: onImagery ? 'rgba(0,0,0,0.9)' : theme.surface.default,
+							textShadowRadius: 3
+						}}
+					>
+						{place.name}
+					</Txt>
 				</View>
-				<Txt
-					numberOfLines={2}
-					style={{
-						width: 52,
-						marginTop: 1,
-						textAlign: 'center',
-						fontSize: 8,
-						lineHeight: 9,
-						color: onImagery ? '#FFFFFF' : theme.text.primary,
-						textShadowColor: onImagery ? 'rgba(0,0,0,0.9)' : theme.surface.default,
-						textShadowRadius: 3
-					}}
-				>
-					{place.name}
-				</Txt>
-			</View>
+			) : (
+				<View collapsable={false} style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+					{badge}
+				</View>
+			)}
 		</SettledMarker>
 	)
 }, (prev, next) =>
-	prev.place.id === next.place.id && prev.redraw === next.redraw && prev.mapType === next.mapType)
+	prev.place.id === next.place.id &&
+	prev.labelled === next.labelled &&
+	prev.redraw === next.redraw &&
+	prev.mapType === next.mapType)
 
 const LAYER_ICONS = { standard: 'map', hybrid: 'satellite-alt', terrain: 'terrain' }
 
@@ -463,20 +490,32 @@ export const Map = ({
 			Math.abs(p.position.latitude - view.latitude) <= latPad &&
 			Math.abs(p.position.longitude - view.longitude) <= lngPad)
 
+		const near = view.latitudeDelta <= PLACE_NEAR_DELTA
+		const labelCap = near ? PLACE_LABEL_CAP_NEAR : PLACE_LABEL_CAP_FAR
+		const dotCap = near ? PLACE_DOT_CAP_NEAR : PLACE_DOT_CAP_FAR
+
 		// Greedy, in the server's order: the first place to claim a patch of
 		// screen keeps it. That order is "most useful first", so a terminal
-		// wins its corner and the sari-sari store beside it steps aside.
+		// wins its corner and the sari-sari store beside it steps aside — to
+		// the dot tier rather than off the map.
+		const free = (kept, p, clearX, clearY) =>
+			!kept.some(k =>
+				Math.abs(k.place.position.longitude - p.position.longitude) / view.longitudeDelta < clearX &&
+				Math.abs(k.place.position.latitude - p.position.latitude) / view.latitudeDelta < clearY)
+
 		const kept = []
-		const cap = view.latitudeDelta <= PLACE_NEAR_DELTA ? PLACE_CAP_NEAR : PLACE_CAP_FAR
 
-		for (const p of onScreen) {
-			if (kept.length >= cap) break
+		for (const place of onScreen) {
+			if (kept.length >= labelCap) break
+			if (free(kept, place, PLACE_CLEAR_X, PLACE_CLEAR_Y)) kept.push({ place, labelled: true })
+		}
 
-			const clashes = kept.some(k =>
-				Math.abs(k.position.longitude - p.position.longitude) / view.longitudeDelta < PLACE_CLEAR_X &&
-				Math.abs(k.position.latitude - p.position.latitude) / view.latitudeDelta < PLACE_CLEAR_Y)
+		const named = new Set(kept.map(k => k.place.id))
 
-			if (!clashes) kept.push(p)
+		for (const place of onScreen) {
+			if (kept.length >= labelCap + dotCap) break
+			if (named.has(place.id)) continue
+			if (free(kept, place, PLACE_DOT_CLEAR_X, PLACE_DOT_CLEAR_Y)) kept.push({ place, labelled: false })
 		}
 
 		return kept
@@ -555,8 +594,14 @@ export const Map = ({
 				    at the vehicle and is consumed as it travels. */}
 				{/* Under everything else Biyahero draws: these are the ground the
 				    fleet moves over, not the thing being tracked. */}
-				{visiblePlaces.map(place => (
-					<PlacePin key={place.id} place={place} redraw={settleTick} mapType={mapType} />
+				{visiblePlaces.map(({ place, labelled }) => (
+					<PlacePin
+						key={place.id}
+						place={place}
+						labelled={labelled}
+						redraw={settleTick}
+						mapType={mapType}
+					/>
 				))}
 
 				{!!destinationPin && <DestinationPin pin={destinationPin} />}
