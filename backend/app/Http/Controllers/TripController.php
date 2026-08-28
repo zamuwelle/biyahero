@@ -167,7 +167,7 @@ class TripController extends Controller
             ->take(self::RECENT_ROUTE_LIMIT)
             ->map(fn (Trip $trip) => [
                 'id' => $trip->route->id,
-                'label' => $trip->route->label ?? $trip->route->name,
+                'label' => $trip->orientedRouteLabel(),
                 'length_km' => (float) $trip->route->length_km,
                 'destination' => $trip->destination,
                 'last_used_at' => $trip->started_at?->toIso8601String(),

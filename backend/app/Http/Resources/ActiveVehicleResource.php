@@ -54,7 +54,9 @@ class ActiveVehicleResource extends JsonResource
 
             'route' => [
                 'id' => $trip->route?->id,
-                'label' => $trip->route?->label ?? $trip->route?->name,
+                // Pointed the way this trip is running: a jeepney on the
+                // return leg must not be labelled with the outbound run.
+                'label' => $trip->orientedRouteLabel(),
                 'length_km' => $trip->route?->length_km,
                 'waypoints' => $trip->route?->waypoints ?? [],
             ],

@@ -103,6 +103,31 @@ it('filters against the exact place the commuter picked, not a re-guessed name',
         ->and($response->json('meta.destination_position.lat'))->toBe((float) $taft->lat);
 });
 
+it('points the route label the way the trip is actually running', function () {
+    $trip = Trip::query()->active()->with('route')->firstOrFail();
+    $waypoints = $trip->route->waypoints;
+    $start = $waypoints[0];
+    $end = $waypoints[count($waypoints) - 1];
+
+    $outbound = $trip->route->label;
+    [$from, $to] = array_map('trim', preg_split('/→/u', $outbound));
+
+    // Heading to the far end: the stored label already reads correctly.
+    $trip->update(['destination' => $to, 'dest_lat' => $end['lat'], 'dest_lng' => $end['lng']]);
+
+    $this->getJson("/api/active-vehicles/{$trip->vehicle_id}")
+        ->assertOk()
+        ->assertJsonPath('data.route.label', $outbound);
+
+    // Turned around at the terminal: the SAME route row, driven back. The
+    // label must not now contradict the destination printed above it.
+    $trip->update(['destination' => $from, 'dest_lat' => $start['lat'], 'dest_lng' => $start['lng']]);
+
+    $this->getJson("/api/active-vehicles/{$trip->vehicle_id}")
+        ->assertOk()
+        ->assertJsonPath('data.route.label', "{$to} → {$from}");
+});
+
 it('never lets a stale vehicle head a destination search', function () {
     // RMV 5520 is seeded two hours stale on a Baclaran corridor; a live vehicle
     // shares that exact route, so the two tie on passing distance.

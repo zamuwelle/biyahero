@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Trip;
+use App\Services\Geocoder;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 
 /**
  * Drives the seeded fleet so a demo does not go stale.
@@ -28,6 +30,14 @@ class SimulateFleet extends Command
 
     /** @var array<int> Vehicle ids this command is allowed to move. */
     private array $simulated = [];
+
+    /** Round-robin cursor for the one street lookup allowed per tick. */
+    private int $streetCursor = 0;
+
+    public function __construct(private Geocoder $geocoder)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -104,7 +114,40 @@ class SimulateFleet extends Command
             $moved++;
         }
 
+        $this->refreshOneStreet($trips);
+
         return $moved;
+    }
+
+    /**
+     * Name the street ONE moving vehicle is on, rotating through the fleet.
+     *
+     * The commuter card says "Kasalukuyang nasa <street>", so that value has
+     * to be a real street — and Nominatim allows about one call a second, so
+     * the whole fleet cannot be refreshed at once. One per tick walks the
+     * fleet in a couple of minutes and stays well inside the limit.
+     *
+     * @param  Collection<int, Trip>  $trips
+     */
+    private function refreshOneStreet($trips): void
+    {
+        if ($trips->isEmpty()) {
+            return;
+        }
+
+        $trip = $trips->values()->get($this->streetCursor % $trips->count());
+        $this->streetCursor++;
+
+        $vehicle = $trip?->vehicle;
+        if (! $vehicle || $vehicle->live_lat === null) {
+            return;
+        }
+
+        $street = $this->geocoder->reverse((float) $vehicle->live_lat, (float) $vehicle->live_lng);
+
+        if ($street !== null) {
+            $vehicle->update(['current_street' => $street]);
+        }
     }
 
     /**

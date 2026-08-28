@@ -35,7 +35,13 @@ const startBroadcastWatcher = (tripId, get, set) =>
 				lastStreetLookup = Date.now()
 				try {
 					const [place] = await Location.reverseGeocodeAsync({ latitude, longitude })
-					street = place?.street || place?.name || place?.district || undefined
+					// place.name is a Plus Code ("HMCF+MRR") when the OS has no
+					// street — useless on a commuter card, so a real place name
+					// is preferred and a code is dropped entirely.
+					const isPlusCode = value => /^[A-Z0-9]{4,8}\+[A-Z0-9]{2,4}$/i.test(value ?? '')
+					street =
+						[place?.street, place?.district, place?.subregion, place?.city, place?.name]
+							.find(value => value && !isPlusCode(value)) ?? undefined
 				} catch {
 					// A failed lookup just means the card keeps the previous street.
 				}

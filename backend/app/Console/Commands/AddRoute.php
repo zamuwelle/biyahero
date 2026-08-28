@@ -149,7 +149,10 @@ class AddRoute extends Command
                 'live_lat' => $point['lat'],
                 'live_lng' => $point['lng'],
                 'last_ping_at' => now(),
-                'current_street' => $route->label,
+                // NOT the route label: the card says "Kasalukuyang nasa X",
+                // which must name a street. The simulator reverse-geocodes a
+                // real one as the vehicle moves.
+                'current_street' => null,
             ]);
 
             Trip::create([
