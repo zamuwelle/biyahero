@@ -6,6 +6,7 @@ use App\Models\Destination;
 use App\Models\Trip;
 use App\Services\CorridorMatcher;
 use App\Services\Geocoder;
+use App\Services\PoiFinder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -18,17 +19,52 @@ use Illuminate\Support\Facades\Cache;
  * Philippines via OpenStreetMap, so a town we have never seen still yields a
  * real, exact destination instead of free text.
  *
- * The two entry points differ only in how they RANK, and that difference is
- * the privacy line: search() is driver-side (auth) and ranks by distance from
- * the driver's own position, while suggest() is public and ranks by distance
- * to the running fleet, because no commuter position exists to rank with.
+ * The two type-ahead entry points differ only in how they RANK, and that
+ * difference is the privacy line: search() is driver-side (auth) and ranks by
+ * distance from the driver's own position, while suggest() is public and ranks
+ * by distance to the running fleet, because no commuter position exists to
+ * rank with.
+ *
+ * nearby() is a third thing: the places to DRAW inside a map viewport. It is
+ * public and takes coordinates, which looks like a privacy hole and is not —
+ * a viewport is where the map is pointed, which the user chose by dragging.
+ * It is never the device's position, and nothing here records it.
  */
 class PlaceController extends Controller
 {
     public function __construct(
         protected Geocoder $geocoder,
         protected CorridorMatcher $corridor,
+        protected PoiFinder $poi,
     ) {}
+
+    /**
+     * Places inside the map's current viewport, so Biyahero can draw its own
+     * place layer.
+     *
+     * It draws one because the Google Maps SDK will not: a custom map style
+     * applies to the plain map type only, so satellite and terrain showed a
+     * different, much thinner set of labels and the three layers disagreed
+     * about what exists. Ours are the same markers on every layer.
+     */
+    public function nearby(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'south' => 'required|numeric|between:-90,90',
+            'north' => 'required|numeric|between:-90,90',
+            'west' => 'required|numeric|between:-180,180',
+            'east' => 'required|numeric|between:-180,180',
+        ]);
+
+        $places = $this->poi->inBox(
+            (float) $validated['south'],
+            (float) $validated['west'],
+            (float) $validated['north'],
+            (float) $validated['east'],
+        );
+
+        return response()->json(['data' => $places]);
+    }
 
     /**
      * Type-ahead for the COMMUTER's "Saan ka pupunta?" — public, and it takes

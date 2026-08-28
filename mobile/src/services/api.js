@@ -98,6 +98,25 @@ export const suggestPlaces = q =>
 			}))
 		)
 
+/**
+ * The places to draw inside the map's current viewport — Biyahero's own place
+ * layer, because Google only styles the plain map type and leaves satellite
+ * and terrain with a thinner, different set of labels.
+ *
+ * Coordinates here are the map's corners, never the device's position.
+ */
+export const fetchNearbyPlaces = ({ south, west, north, east }) =>
+	client
+		.get('/places/nearby', { params: { south, west, north, east } })
+		.then(res =>
+			(res.data?.data ?? []).map(p => ({
+				id: p.id,
+				name: p.name,
+				kind: p.kind,
+				position: { latitude: Number(p.lat), longitude: Number(p.lng) }
+			}))
+		)
+
 export const fetchDestinations = q =>
 	client.get('/destinations', { params: q ? { q } : {} }).then(res => res.data?.data ?? [])
 

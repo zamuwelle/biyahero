@@ -1,10 +1,11 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Pressable } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
 import { VehicleGlyph } from './VehicleGlyph'
 import { Txt } from '@/components/ui/Txt'
+import { fetchNearbyPlaces } from '@/services/api'
 import { usePrefs, MAP_TYPES } from '@/services/prefs'
 import { useCopy } from '@/constants/copy'
 import { elevation } from '@/theme/tokens'
@@ -43,14 +44,14 @@ const REGION_KEY = 'biyahero.mapRegion'
  */
 const SETTLE_MS = 5000
 
-const SettledMarker = ({ redrawKey, children, ...markerProps }) => {
+const SettledMarker = ({ redrawKey, settleMs = SETTLE_MS, children, ...markerProps }) => {
 	const [tracking, setTracking] = useState(true)
 
 	useEffect(() => {
 		setTracking(true)
-		const timer = setTimeout(() => setTracking(false), SETTLE_MS)
+		const timer = setTimeout(() => setTracking(false), settleMs)
 		return () => clearTimeout(timer)
-	}, [redrawKey])
+	}, [redrawKey, settleMs])
 
 	return (
 		<Marker tracksViewChanges={tracking} {...markerProps}>
@@ -155,6 +156,158 @@ const DestinationPin = ({ pin }) => {
 	)
 }
 
+/**
+ * Biyahero's own place layer.
+ *
+ * The Google Maps Android SDK only applies a custom style to the plain map
+ * type. On satellite and terrain it draws its own labels and far fewer of
+ * them, so the three layers disagreed about what exists — a church on
+ * satellite, a public market on standard, neither on the other. Drawing the
+ * places ourselves is the only way all three can show the same thing.
+ */
+const PLACE_ICONS = {
+	terminal: 'directions-bus',
+	worship: 'church',
+	school: 'school',
+	hospital: 'local-hospital',
+	market: 'storefront',
+	government: 'account-balance',
+	store: 'shopping-bag',
+	park: 'park',
+	fuel: 'local-gas-station',
+	pharmacy: 'local-pharmacy',
+	bank: 'savings',
+	hotel: 'hotel',
+	food: 'restaurant'
+}
+
+/**
+ * Zoomed out past about a town's width the pins pile on top of each other —
+ * Google hides its own POIs at these zooms for the same reason. Closer in,
+ * more of them: detail arrives as you zoom, which is the behaviour people
+ * already expect from a map.
+ */
+const PLACE_MAX_DELTA = 0.09
+const PLACE_NEAR_DELTA = 0.02
+const PLACE_CAP_FAR = 14
+const PLACE_CAP_NEAR = 28
+
+/**
+ * How much of the viewport one pin claims, so two of them cannot print their
+ * names over each other. Google runs a label collision engine; this is the
+ * cheap version of the same idea, and it is why a dense poblacion reads as a
+ * handful of legible places instead of a pile of overlapping text.
+ */
+const PLACE_CLEAR_X = 0.13
+const PLACE_CLEAR_Y = 0.08
+
+/** Panning settles before we ask — a drag must not fire a request per frame. */
+const PLACE_DEBOUNCE_MS = 600
+
+/** Fetch wider than the screen so a short pan is already answered. */
+const PLACE_PAD = 0.35
+
+/** A region as map corners, optionally grown past what is on screen. */
+const boxFor = (region, pad = 0) => {
+	const lat = (region.latitudeDelta / 2) * (1 + pad * 2)
+	const lng = (region.longitudeDelta / 2) * (1 + pad * 2)
+
+	return {
+		south: region.latitude - lat,
+		north: region.latitude + lat,
+		west: region.longitude - lng,
+		east: region.longitude + lng
+	}
+}
+
+/** Whether what we already fetched still covers the whole view. */
+const boxCovers = (outer, inner) =>
+	!!outer &&
+	outer.south <= inner.south &&
+	outer.north >= inner.north &&
+	outer.west <= inner.west &&
+	outer.east >= inner.east
+
+/**
+ * Short window: these are a glyph in a circle, nowhere near the SVG-and-font
+ * race a vehicle pin has to win. It reopens on every camera settle, because
+ * Android otherwise freezes whatever it caught mid-flight.
+ */
+const PLACE_SETTLE_MS = 900
+
+/**
+ * One place from Biyahero's own layer.
+ *
+ * 52dp square, because that is what this stack can actually draw. A custom
+ * marker view is rasterised into a bitmap that will not grow past roughly
+ * 60dp: a bare 200x36 test box came back as a ragged 100x100 blob, which is
+ * why the old label chips were half-drawn. So the name is set in 8pt over two
+ * lines and truncated, and Android's own info window carries it in full on
+ * tap — that one is drawn by the OS and is not subject to the cap.
+ *
+ * Under the fleet on purpose. These are the ground the jeepneys move over.
+ */
+const PlacePin = memo(({ place, redraw, mapType }) => {
+	const { theme, scheme } = useTheme()
+	const terminal = place.kind === 'terminal'
+	// Dark ink on a pale grid, white on aerial photography — the same swap
+	// Google makes, because neither reads on the other's background.
+	const onImagery = mapType === 'hybrid'
+
+	return (
+		<SettledMarker
+			coordinate={place.position}
+			anchor={{ x: 0.5, y: 0.5 }}
+			zIndex={terminal ? 50 : 40}
+			redrawKey={`${scheme}|${mapType}|${redraw}`}
+			settleMs={PLACE_SETTLE_MS}
+			// Android draws this itself, so the name is safe from the bitmap cap.
+			title={place.name}
+			accessibilityLabel={place.name}
+		>
+			<View collapsable={false} style={{ width: 52, height: 52, alignItems: 'center' }}>
+				<View
+					style={[
+						elevation.float,
+						{
+							width: 26,
+							height: 26,
+							borderRadius: 13,
+							alignItems: 'center',
+							justifyContent: 'center',
+							backgroundColor: theme.surface.default,
+							borderColor: terminal ? theme.route[1] : theme.border.subtle,
+							borderWidth: terminal ? 2 : 1
+						}
+					]}
+				>
+					<MaterialIcons
+						name={PLACE_ICONS[place.kind] ?? 'place'}
+						size={15}
+						color={terminal ? theme.route[1] : theme.icon.secondary}
+					/>
+				</View>
+				<Txt
+					numberOfLines={2}
+					style={{
+						width: 52,
+						marginTop: 1,
+						textAlign: 'center',
+						fontSize: 8,
+						lineHeight: 9,
+						color: onImagery ? '#FFFFFF' : theme.text.primary,
+						textShadowColor: onImagery ? 'rgba(0,0,0,0.9)' : theme.surface.default,
+						textShadowRadius: 3
+					}}
+				>
+					{place.name}
+				</Txt>
+			</View>
+		</SettledMarker>
+	)
+}, (prev, next) =>
+	prev.place.id === next.place.id && prev.redraw === next.redraw && prev.mapType === next.mapType)
+
 const LAYER_ICONS = { standard: 'map', hybrid: 'satellite-alt', terrain: 'terrain' }
 
 /**
@@ -247,6 +400,14 @@ export const Map = ({
 	// memoised per trip upstream, so a dropped first call would never retry —
 	// gate on readiness and the effect re-fires the moment the map can obey.
 	const [mapReady, setMapReady] = useState(false)
+	// The settled viewport, which is what the place layer is drawn for. It is
+	// where the map is POINTED — chosen by dragging — never where the user is.
+	const [viewport, setViewport] = useState(null)
+	const [places, setPlaces] = useState([])
+	const fetchedBox = useRef(null)
+	// Bumped every time the camera stops, to reopen the place pins' capture
+	// window. Panning must not leave a field of half-drawn markers behind.
+	const [settleTick, setSettleTick] = useState(0)
 
 	useEffect(() => {
 		if (!rememberRegion) return
@@ -255,6 +416,71 @@ export const Map = ({
 			.then(saved => setInitialRegion(saved ? JSON.parse(saved) : DEFAULT_REGION))
 			.catch(() => setInitialRegion(DEFAULT_REGION))
 	}, [rememberRegion])
+
+	// Biyahero's own place layer: fetched for a box wider than the screen, so a
+	// short pan is already answered, and only once the map has stopped moving.
+	useEffect(() => {
+		const view = viewport ?? initialRegion
+		if (!view) return
+
+		if (view.latitudeDelta > PLACE_MAX_DELTA) {
+			// Zoomed out past the point where labels are readable. Drop the box
+			// too, so coming back down re-fetches instead of drawing a stale set.
+			fetchedBox.current = null
+			setPlaces([])
+
+			return
+		}
+
+		if (boxCovers(fetchedBox.current, boxFor(view))) return
+
+		const timer = setTimeout(() => {
+			const box = boxFor(view, PLACE_PAD)
+
+			fetchNearbyPlaces(box)
+				.then(rows => {
+					fetchedBox.current = box
+					setPlaces(rows)
+				})
+				// A map without shop pins is a smaller loss than a red box.
+				.catch(() => {})
+		}, PLACE_DEBOUNCE_MS)
+
+		return () => clearTimeout(timer)
+	}, [viewport, initialRegion])
+
+	// Trim the fetched box to what is actually on screen, then to what a phone
+	// can draw. The server already ordered them by how much a commuter needs
+	// them, so slicing keeps terminals and landmarks and drops the bakeries.
+	const visiblePlaces = useMemo(() => {
+		const view = viewport ?? initialRegion
+		if (!view || view.latitudeDelta > PLACE_MAX_DELTA) return []
+
+		const latPad = view.latitudeDelta / 2
+		const lngPad = view.longitudeDelta / 2
+
+		const onScreen = places.filter(p =>
+			Math.abs(p.position.latitude - view.latitude) <= latPad &&
+			Math.abs(p.position.longitude - view.longitude) <= lngPad)
+
+		// Greedy, in the server's order: the first place to claim a patch of
+		// screen keeps it. That order is "most useful first", so a terminal
+		// wins its corner and the sari-sari store beside it steps aside.
+		const kept = []
+		const cap = view.latitudeDelta <= PLACE_NEAR_DELTA ? PLACE_CAP_NEAR : PLACE_CAP_FAR
+
+		for (const p of onScreen) {
+			if (kept.length >= cap) break
+
+			const clashes = kept.some(k =>
+				Math.abs(k.position.longitude - p.position.longitude) / view.longitudeDelta < PLACE_CLEAR_X &&
+				Math.abs(k.position.latitude - p.position.latitude) / view.latitudeDelta < PLACE_CLEAR_Y)
+
+			if (!clashes) kept.push(p)
+		}
+
+		return kept
+	}, [places, viewport, initialRegion])
 
 	// Crosshair tap: bring the commuter's own dot into view.
 	useEffect(() => {
@@ -306,8 +532,10 @@ export const Map = ({
 				// otherwise swallow the tap, so they clear the focus too.
 				onPress={onMapPress}
 				onPoiClick={onMapPress}
-				onRegionChangeComplete={region => {
-					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(region)).catch(() => {})
+				onRegionChangeComplete={next => {
+					setViewport(next)
+					setSettleTick(t => t + 1)
+					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(next)).catch(() => {})
 				}}
 				mapType={mapType}
 				// Styling only applies to the drawn map; imagery ignores it.
@@ -325,6 +553,12 @@ export const Map = ({
 
 				{/* No start dot: routes render navigation-style — the line begins
 				    at the vehicle and is consumed as it travels. */}
+				{/* Under everything else Biyahero draws: these are the ground the
+				    fleet moves over, not the thing being tracked. */}
+				{visiblePlaces.map(place => (
+					<PlacePin key={place.id} place={place} redraw={settleTick} mapType={mapType} />
+				))}
+
 				{!!destinationPin && <DestinationPin pin={destinationPin} />}
 
 				{vehicles

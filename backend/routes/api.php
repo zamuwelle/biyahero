@@ -32,6 +32,10 @@ Route::get('/destinations', [DestinationController::class, 'index']);
 // how close they sit to routes the fleet is actually running.
 Route::get('/places/suggest', [PlaceController::class, 'suggest'])->middleware('throttle:40,1');
 
+// The map's own place layer. A viewport is not a person: this takes the
+// corners of what is on screen, which the user chose by dragging the map.
+Route::get('/places/nearby', [PlaceController::class, 'nearby'])->middleware('throttle:60,1');
+
 /*
  * The driver's pre-trip route preview. It takes the driver's position for the
  * same reason the resolver does: "Poblacion" names a place in most PH towns,

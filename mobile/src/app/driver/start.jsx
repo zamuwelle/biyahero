@@ -12,7 +12,7 @@ import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
 import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces } from '@/services/api'
-import { MAP_STYLES } from '@/theme/mapStyle'
+import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
 
@@ -304,7 +304,7 @@ export default function StartTrip() {
 						latitudeDelta: 0.05,
 						longitudeDelta: 0.05
 					}}
-					customMapStyle={MAP_STYLES[scheme]}
+					customMapStyle={MAP_STYLES_WITH_PLACES[scheme]}
 					onPress={e => setPickPoint(e.nativeEvent.coordinate)}
 					toolbarEnabled={false}
 					rotateEnabled={false}
