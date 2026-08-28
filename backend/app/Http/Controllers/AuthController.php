@@ -51,6 +51,13 @@ class AuthController extends Controller
             return $this->error('Nakarehistro na ang lisensyang ito. Mag-log in na lang.', 409);
         }
 
+        // The plate is half the login credential AND is painted on the side of
+        // a real jeepney, so anyone can read one off the street. Letting a
+        // second account claim it would hand them the other driver's identity.
+        if (Vehicle::where('plate_number', Vehicle::normalisePlate($validated['plate_number']))->exists()) {
+            return $this->error('Nakarehistro na ang plakang ito sa ibang drayber.', 422);
+        }
+
         $user = DB::transaction(function () use ($validated, $lookup) {
             // Private disk: the photo is evidence for a later dispute, never public.
             $path = request()->file('license_photo')->store('licences');

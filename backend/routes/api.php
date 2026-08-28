@@ -32,20 +32,46 @@ Route::get('/destinations', [DestinationController::class, 'index']);
 // how close they sit to routes the fleet is actually running.
 Route::get('/places/suggest', [PlaceController::class, 'suggest'])->middleware('throttle:40,1');
 
-Route::get('/routes/for-destination', function (Request $request, CorridorMatcher $corridor) {
-    $validated = $request->validate(['destination' => 'required|string|max:120']);
+/*
+ * The driver's pre-trip route preview. It takes the driver's position for the
+ * same reason the resolver does: "Poblacion" names a place in most PH towns,
+ * and a preview of the wrong province's corridor is worse than none.
+ */
+Route::middleware('auth:sanctum')->get('/routes/for-destination', function (Request $request, CorridorMatcher $corridor) {
+    $validated = $request->validate([
+        'destination' => 'required|string|max:120',
+        'lat' => 'nullable|required_with:lng|numeric|between:-90,90',
+        'lng' => 'nullable|required_with:lat|numeric|between:-180,180',
+    ]);
+
+    $located = isset($validated['lat'], $validated['lng']);
+    $needle = mb_strtolower($validated['destination']);
 
     $place = Destination::query()
-        ->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($validated['destination']).'%'])
+        ->get()
+        ->filter(fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle))
+        // Nearest namesake to the driver, not whichever row was inserted first.
+        ->sortBy(fn (Destination $d) => $located
+            ? ($d->lat - $validated['lat']) ** 2 + ($d->lng - $validated['lng']) ** 2
+            : 0)
         ->first();
 
     if (! $place) {
         return response()->json(['data' => null]);
     }
 
-    // The driver's own preview: same tight rule the trip resolver uses.
-    $ids = $corridor->routeIdsNear($place->lat, $place->lng, CorridorMatcher::SERVES_RADIUS_M);
-    $route = $ids ? Routes::find($ids[0]) : null;
+    // Same tight rule the trip resolver uses, and the corridor must pass the
+    // driver too — a preview they cannot reach is not their route.
+    $candidates = Routes::query()
+        ->whereIn('id', $corridor->routeIdsNear($place->lat, $place->lng, CorridorMatcher::SERVES_RADIUS_M))
+        ->get();
+
+    $route = $located
+        ? $candidates
+            ->filter(fn (Routes $r) => $corridor->minDistanceToRoute($validated['lat'], $validated['lng'], $r->waypoints ?? []) <= 800)
+            ->sortBy(fn (Routes $r) => $corridor->minDistanceToRoute($validated['lat'], $validated['lng'], $r->waypoints ?? []))
+            ->first()
+        : $candidates->first();
 
     return response()->json(['data' => $route]);
 });
@@ -129,21 +155,29 @@ Route::middleware('auth:sanctum')->group(function () {
 | surfaced to a commuter as an arrival time, because that would require
 | knowing where the commuter is standing.
 */
-Route::post('/eta', [EtaController::class, 'index']);
+Route::middleware(['auth:sanctum', 'throttle:30,1'])->post('/eta', [EtaController::class, 'index']);
 
 /*
 |--------------------------------------------------------------------------
 | Debug
 |--------------------------------------------------------------------------
 */
-Route::get('/debug/fresh-seed', function () {
-    Artisan::call('migrate:fresh', ['--force' => true]);
-    Artisan::call('db:seed', ['--class' => 'DatabaseSeeder', '--force' => true]);
-    // The provincial demo fleets (Victoria–Tarlac + the Angeles venue
-    // corridors) live outside DatabaseSeeder because tests pin fleet counts.
-    Artisan::call('db:seed', ['--class' => 'DemoFleetSeeder', '--force' => true]);
+/*
+ * Local only. fresh-seed DROPS every table — driver accounts, licence
+ * records, trips — and /debug/vehicles dumps every plate and live
+ * coordinate, including drivers who are not broadcasting. Neither may be
+ * reachable on a deployed instance.
+ */
+Route::middleware('local-only')->group(function () {
+    Route::get('/debug/fresh-seed', function () {
+        Artisan::call('migrate:fresh', ['--force' => true]);
+        Artisan::call('db:seed', ['--class' => 'DatabaseSeeder', '--force' => true]);
+        // The provincial demo fleets (Victoria–Tarlac + the Angeles venue
+        // corridors) live outside DatabaseSeeder because tests pin fleet counts.
+        Artisan::call('db:seed', ['--class' => 'DemoFleetSeeder', '--force' => true]);
 
-    return response()->json(['status' => 'Database reset and reseeded']);
+        return response()->json(['status' => 'Database reset and reseeded']);
+    });
+
+    Route::get('/debug/vehicles', fn () => Vehicle::with('activeTrip')->get());
 });
-
-Route::get('/debug/vehicles', fn () => Vehicle::with('activeTrip')->get());

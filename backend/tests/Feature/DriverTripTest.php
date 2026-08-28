@@ -168,6 +168,71 @@ it('stops a driver working once their licence lapses', function () {
     test()->postJson('/api/trips', ['destination' => 'Baclaran'])->assertForbidden();
 });
 
+it('takes a revoked driver off the road immediately, mid-run', function () {
+    $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
+    $trip = Trip::where('vehicle_id', $driver->vehicle->id)->active()->firstOrFail();
+
+    Sanctum::actingAs($driver);
+    test()->postJson("/api/trips/{$trip->id}/ping", ['lat' => 14.55, 'lng' => 121.0])->assertOk();
+
+    $driver->update(['verification_status' => 'rejected', 'is_verified' => false, 'approved_at' => null]);
+
+    // The run itself is closed, not merely blocked at the next start.
+    test()->artisan('biyahero:review', ['licence' => 'N01-19-123456', '--revoke' => 'Pekeng lisensya.']);
+
+    Sanctum::actingAs($driver->fresh());
+    test()->postJson("/api/trips/{$trip->id}/ping", ['lat' => 14.56, 'lng' => 121.0])->assertForbidden();
+    test()->patchJson("/api/trips/{$trip->id}/capacity", ['capacity' => 'full'])->assertForbidden();
+});
+
+it('refuses a ping that arrives after the trip ended', function () {
+    $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
+    Sanctum::actingAs($driver);
+
+    $trip = Trip::where('vehicle_id', $driver->vehicle->id)->active()->firstOrFail();
+    $this->postJson("/api/trips/{$trip->id}/end")->assertOk();
+
+    // A late ping would re-plot a finished vehicle on commuter maps.
+    $this->postJson("/api/trips/{$trip->id}/ping", ['lat' => 14.55, 'lng' => 121.0])
+        ->assertStatus(422);
+
+    $vehicle = $driver->vehicle->fresh();
+    expect($vehicle->live_lat)->toBeNull()
+        ->and($vehicle->last_ping_at)->toBeNull();
+});
+
+it('tells a lapsed-licence driver the real reason, not "not yet approved"', function () {
+    registerDriver()->assertCreated();
+    $driver = User::where('license_lookup', app(LicenceIdentity::class)->blindIndex('N01-19-123456'))->firstOrFail();
+    $driver->forceFill(['license_expires_at' => now()->subDay()])->save();
+
+    Sanctum::actingAs($driver->fresh());
+
+    test()->postJson('/api/trips', ['destination' => 'Baclaran', 'lat' => 14.534, 'lng' => 120.9967])
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Paso na ang lisensya mo. I-renew ito bago magbiyahe ulit.');
+});
+
+it('refuses a second account claiming a plate already on the road', function () {
+    registerDriver()->assertCreated();
+
+    registerDriver([
+        'license_no' => 'N02-20-654321',
+        'plate_number' => 'TST 1234',
+    ])
+        ->assertStatus(422)
+        ->assertJsonPath('message', 'Nakarehistro na ang plakang ito sa ibang drayber.');
+});
+
+it('keeps the destructive debug routes off anything but a local machine', function () {
+    // The test environment counts as local for the middleware, so assert the
+    // gate itself rather than the environment it happens to run in.
+    app()->detectEnvironment(fn () => 'production');
+
+    $this->getJson('/api/debug/fresh-seed')->assertNotFound();
+    $this->getJson('/api/debug/vehicles')->assertNotFound();
+});
+
 it('clears the live fix when a trip ends so no stale position lingers', function () {
     $driver = User::whereHas('vehicle', fn ($q) => $q->where('plate_number', 'NCR 8842'))->firstOrFail();
     Sanctum::actingAs($driver);
