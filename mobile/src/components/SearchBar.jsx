@@ -12,7 +12,7 @@ import { useCopy } from '@/constants/copy'
  * Renders as a button when `onPress` is given (Map Home taps through to the
  * search screen) and as a live input when `onChangeText` is given.
  */
-export const SearchBar = ({ value, onChangeText, onPress, onClear, autoFocus, placeholder }) => {
+export const SearchBar = ({ value, onChangeText, onPress, onClear, onSubmit, autoFocus, placeholder }) => {
 	const copy = useCopy()
 	const { theme } = useTheme()
 	const hint = placeholder ?? copy.mapHome.searchPlaceholder
@@ -44,6 +44,7 @@ export const SearchBar = ({ value, onChangeText, onPress, onClear, autoFocus, pl
 				placeholderTextColor={theme.icon.muted}
 				autoFocus={autoFocus}
 				returnKeyType="search"
+				onSubmitEditing={onSubmit}
 				style={[type.bodyL, { flex: 1, color: theme.text.primary, padding: 0 }]}
 			/>
 			{!!value && (

@@ -69,10 +69,12 @@ export const search = {
 	popular: 'POPULAR DESTINATIONS',
 	privacy: 'Saved on your device only. No account, and your location is never requested.',
 	activeCount: n => `${n} vehicle${n === 1 ? '' : 's'} active now`,
-	resultsTitle: (n, dest) => `${n} vehicle${n === 1 ? '' : 's'} bound for ${dest}`,
-	resultsSubtitle: dest => `Routes passing within 400 m of ${dest}`,
-	emptyTitle: dest => `No vehicles bound for ${dest}`,
-	emptyBody: 'No driver is active on this route right now. This is common after 9 PM.',
+	resultsTitle: (n, dest) => `${n} vehicle${n === 1 ? '' : 's'} passing ${dest}`,
+	resultsSubtitle: (dest, radius) => `Routes passing within ${radius} of ${dest}`,
+	emptyTitle: dest => `No vehicles passing ${dest}`,
+	emptyBody: 'No driver is passing there right now. This is common after 9 PM.',
+	searchAnywhere: q => `Search for "${q}"`,
+	searchAnywhereHint: 'Anywhere on the map — shows the rides that run past it',
 	noneActiveTitle: 'No vehicles active right now',
 	noneActiveBody: 'No driver is broadcasting at the moment. Try again shortly.',
 	clear: 'Clear'
@@ -90,6 +92,7 @@ export const vehicle = {
 	verifiedDriver: years => `Verified driver · ${years} year${years === 1 ? '' : 's'} on the route`,
 	away: m => (m < 1000 ? `${m} m away from you` : `${(m / 1000).toFixed(1)} km away from you`),
 	nearest: 'Closest to you',
+	passesWithin: (m, dest) => `Passes ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} from ${dest}`,
 	staleTitle: 'Last known position',
 	staleBody: 'No live GPS. Showing when this vehicle was last seen.'
 }

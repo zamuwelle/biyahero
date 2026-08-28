@@ -72,6 +72,14 @@ export default function DestinationSearch() {
 		router.back()
 	}
 
+	// Anywhere on the map, not just places Biyahero already lists: the server
+	// locates the name and returns the rides whose routes RUN PAST it. This is
+	// how "SM City Clark" finds a jeepney bound for Dau.
+	const chooseTyped = () => {
+		const name = query.trim()
+		if (name) choose({ name })
+	}
+
 	const searching = query.trim().length > 0
 
 	return (
@@ -87,7 +95,13 @@ export default function DestinationSearch() {
 					<MaterialIcons name="arrow-back-ios-new" size={20} color={theme.icon.primary} />
 				</Pressable>
 				<View className="flex-1">
-					<SearchBar value={query} onChangeText={setQuery} onClear={() => setQuery('')} autoFocus />
+					<SearchBar
+						value={query}
+						onChangeText={setQuery}
+						onClear={() => setQuery('')}
+						onSubmit={chooseTyped}
+						autoFocus
+					/>
 				</View>
 			</View>
 
@@ -124,8 +138,18 @@ export default function DestinationSearch() {
 						/>
 					))}
 
-					{!loading && results.length === 0 && (
-						<EmptyState title={copy.search.emptyTitle(query.trim())} body={copy.search.emptyBody} />
+					{searching && (
+						<PlaceRow
+							icon="travel-explore"
+							tint={theme.surface.sunken}
+							name={copy.search.searchAnywhere(query.trim())}
+							subtitle={copy.search.searchAnywhereHint}
+							onPress={chooseTyped}
+						/>
+					)}
+
+					{!loading && !searching && results.length === 0 && (
+						<EmptyState title={copy.search.noneActiveTitle} body={copy.search.noneActiveBody} />
 					)}
 				</View>
 

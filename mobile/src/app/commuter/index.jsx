@@ -33,6 +33,9 @@ export default function MapHome() {
 	const vehicles = useStore(s => s.vehicles)
 	const destination = useStore(s => s.destination)
 	const vehicleFilter = useStore(s => s.vehicleFilter)
+	const corridorRadiusM = useStore(s => s.corridorRadiusM)
+	const searchedPosition = useStore(s => s.destinationPosition)
+	const vehiclesFor = useStore(s => s.vehiclesFor)
 	const selectedVehicleId = useStore(s => s.selectedVehicleId)
 	const setVehicleFilter = useStore(s => s.setVehicleFilter)
 	const clearDestination = useStore(s => s.clearDestination)
@@ -87,8 +90,12 @@ export default function MapHome() {
 		if (destination?.lat != null) {
 			return { latitude: Number(destination.lat), longitude: Number(destination.lng), label: destination.name }
 		}
+		// A typed place we do not list: the server located it for us.
+		if (destination && searchedPosition) {
+			return { ...searchedPosition, label: destination.name }
+		}
 		return null
-	}, [selected, destination])
+	}, [selected, destination, searchedPosition])
 
 	const fitTo = useMemo(
 		() =>
@@ -97,6 +104,14 @@ export default function MapHome() {
 				: null,
 		[destination, vehicles, destinationPin]
 	)
+
+	// Straight from the server, so the promise on screen matches the filter
+	// that actually produced the list.
+	const corridorRadiusText = corridorRadiusM
+		? corridorRadiusM < 1000
+			? `${corridorRadiusM} m`
+			: `${(corridorRadiusM / 1000).toFixed(1)} km`
+		: '1.5 km'
 
 	// Frame once per SET of matches — not per poll, and not just per search.
 	// The filtered list arrives a beat after the destination does (the old
@@ -120,7 +135,10 @@ export default function MapHome() {
 	// id tie-break so GPS jitter and 8 s hops don't shuffle cards under the
 	// user's finger. Off (or failed — the watcher can die after a seed fix, so
 	// myLocation alone is not proof), the server's freshest-ping order stands.
-	const located = myLocationOn && !!myLocation
+	// A destination search arrives already ordered by how close each route
+	// runs to it — that ordering answers the question being asked, so it wins
+	// over "nearest to me".
+	const located = myLocationOn && !!myLocation && !destination
 	const listVehicles = useMemo(() => {
 		if (!located) return vehicles
 		const rank = v => Math.round((distanceM(myLocation, v.position) ?? Infinity) / 100)
@@ -187,7 +205,11 @@ export default function MapHome() {
 									: copy.mapHome.activeCount(vehicles.length)}
 							</Txt>
 							<Txt variant="caption" className="text-fg-secondary">
-								{destination ? copy.search.resultsSubtitle(destination.name) : myLocationOn ? copy.mapHome.updateNoteLocated : copy.mapHome.updateNote}
+								{destination
+								? copy.search.resultsSubtitle(destination.name, corridorRadiusText)
+								: myLocationOn
+									? copy.mapHome.updateNoteLocated
+									: copy.mapHome.updateNote}
 							</Txt>
 						</View>
 
@@ -230,6 +252,14 @@ export default function MapHome() {
 								// Never on a stale card — "closest" must not assert live
 								// proximity from a minutes-old last-seen position.
 								nearest={i === 0 && located && !!v.position && !v.stale}
+								passesNote={
+									// Only once the list itself has caught up with the
+									// destination — otherwise the previous search's
+									// distances would be printed under the new name.
+									destination && vehiclesFor === destination.name && v.passesWithinM != null
+										? copy.vehicle.passesWithin(v.passesWithinM, destination.name)
+										: null
+								}
 							/>
 						))
 					)}

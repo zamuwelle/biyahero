@@ -32,6 +32,8 @@ const normaliseVehicle = v => {
 		model: v.model,
 		body_number: v.body_number,
 		destination: v.destination,
+		// Only on a destination search: how close this route runs to it.
+		passesWithinM: v.passes_within_m ?? null,
 		destinationPosition: v.destination_position?.lat != null
 			? { latitude: Number(v.destination_position.lat), longitude: Number(v.destination_position.lng) }
 			: null,
@@ -71,6 +73,7 @@ export const fetchActiveVehicles = ({ destination, vehicleType } = {}) =>
 			vehicles: (res.data?.data ?? []).map(normaliseVehicle),
 			meta: res.data?.meta ?? {}
 		}))
+
 
 export const fetchVehicle = id =>
 	client.get(`/active-vehicles/${id}`).then(res => normaliseVehicle(res.data?.data ?? res.data))

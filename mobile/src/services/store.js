@@ -149,6 +149,10 @@ export const useStore = create((set, get) => ({
 	loading: false,
 	error: null,
 	destination: null,
+	/** How wide the "passes near here" corridor is, straight from the server. */
+	corridorRadiusM: null,
+	destinationPosition: null,
+	vehiclesFor: null,
 	vehicleFilter: 'all',
 	selectedVehicleId: null,
 	recentSearches: [],
@@ -193,7 +197,23 @@ export const useStore = create((set, get) => ({
 				destination: destination?.name,
 				vehicleType: vehicleFilter
 			})
-			set({ vehicles, activeCount: meta.count ?? vehicles.length, error: null })
+			set({
+				vehicles,
+				activeCount: meta.count ?? vehicles.length,
+				corridorRadiusM: meta.corridor_radius_m ?? null,
+				// Where the server actually located the search, so a typed place
+				// no destination row knows can still be pinned on the map.
+				destinationPosition: meta.destination_position
+					? {
+							latitude: Number(meta.destination_position.lat),
+							longitude: Number(meta.destination_position.lng)
+						}
+					: null,
+				// The place this list was measured against. Naming a distance
+				// after a destination it was not computed for invents a figure.
+				vehiclesFor: destination?.name ?? null,
+				error: null
+			})
 			get().checkProximity()
 		} catch {
 			set({ error: getCopy().common.offline })

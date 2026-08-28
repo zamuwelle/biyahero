@@ -16,6 +16,11 @@ beforeEach(function () {
     // canned OSRM response in tests/Unit.
     Http::fake(['router.project-osrm.org/*' => Http::response(null, 503)]);
 
+    // Nothing here may touch the network: an unfaked URL is executed for
+    // real by Laravel's partial fake, which once let a live Nominatim
+    // lookup decide a test's outcome.
+    Http::preventStrayRequests();
+
     $this->seed(DatabaseSeeder::class);
 });
 
@@ -62,16 +67,61 @@ it('lists every active vehicle when no destination is given', function () {
         ->assertJsonPath('meta.count', 12);
 });
 
-it('corridor-matches a destination to routes that pass within 400 m', function () {
+it('matches routes that pass the destination, nearest-passing first', function () {
     $response = $this->getJson('/api/active-vehicles?destination=Baclaran')->assertOk();
 
-    expect($response->json('meta.count'))->toBe(5)
-        ->and($response->json('meta.corridor_radius_m'))->toBe(400);
+    expect($response->json('meta.corridor_radius_m'))->toBe(1500)
+        ->and($response->json('data'))->not->toBeEmpty();
 
-    // The corridor asks "does this route PASS Baclaran", so every match must be
-    // on a Baclaran-serving route — not merely named Baclaran.
+    // The corridor asks "does this route PASS the place", so every match must
+    // report how close it actually runs — and the closest must lead.
+    $distances = array_column($response->json('data'), 'passes_within_m');
+
+    $sorted = $distances;
+    sort($sorted);
+
+    expect($distances)->toBe($sorted)
+        ->and(max($distances))->toBeLessThanOrEqual(1500);
+});
+
+it('never lets a stale vehicle head a destination search', function () {
+    // RMV 5520 is seeded two hours stale on a Baclaran corridor; a live vehicle
+    // shares that exact route, so the two tie on passing distance.
+    $rows = collect($this->getJson('/api/active-vehicles?destination=Baclaran')->assertOk()->json('data'));
+
+    $stale = $rows->search(fn (array $v) => $v['is_stale'] === true);
+    $live = $rows->search(fn (array $v) => $v['is_stale'] === false);
+
+    expect($stale)->not->toBeFalse()
+        ->and($live)->not->toBeFalse()
+        // Nearest-passing orders the list, but never above a ride you can catch.
+        ->and($live)->toBeLessThan($stale);
+});
+
+it('reports where the searched place sits so the app can pin it', function () {
+    $baclaran = Destination::query()->where('name', 'Baclaran')->firstOrFail();
+
+    $this->getJson('/api/active-vehicles?destination=Baclaran')
+        ->assertOk()
+        ->assertJsonPath('meta.destination_position.lat', (float) $baclaran->lat)
+        ->assertJsonPath('meta.destination_position.lng', (float) $baclaran->lng);
+});
+
+it('finds rides that merely PASS a place nobody is bound for', function () {
+    // SM City Clark is not a destination Biyahero knows, and no seeded trip is
+    // headed there — but a route runs past it, which is the whole point.
+    Http::fake(['nominatim.openstreetmap.org/*' => Http::response([
+        ['lat' => '14.5636', 'lon' => '120.9944', 'display_name' => 'Some Mall, Pasay, Metro Manila, Philippines'],
+    ])]);
+
+    $response = $this->getJson('/api/active-vehicles?destination=Some%20Mall')->assertOk();
+
+    expect($response->json('data'))->not->toBeEmpty();
+
     foreach ($response->json('data') as $vehicle) {
-        expect($vehicle['route']['label'])->toContain('Baclaran');
+        // Nothing is bound FOR it; they only pass it.
+        expect($vehicle['destination'])->not->toBe('Some Mall')
+            ->and($vehicle['passes_within_m'])->toBeLessThanOrEqual(1500);
     }
 });
 
@@ -115,6 +165,9 @@ it('returns a null destination pin for a destination name it does not know', fun
 });
 
 it('returns nothing for an unknown destination rather than falling back to everything', function () {
+    // Nothing on the map by this name either.
+    Http::fake(['nominatim.openstreetmap.org/*' => Http::response([], 200)]);
+
     // The dangerous failure mode: a typo silently showing all 12 vehicles as if
     // they all served the typed place.
     $this->getJson('/api/active-vehicles?destination=Narnia')
@@ -176,7 +229,7 @@ it('counts active vehicles per destination without any commuter position', funct
 
     $baclaran = collect($response->json('data'))->firstWhere('name', 'Baclaran');
 
-    expect($baclaran['active_count'])->toBe(5)
+    expect($baclaran['active_count'])->toBe(7)
         ->and($baclaran['subtitle'])->toBe('LRT-1 Baclaran Station');
 });
 

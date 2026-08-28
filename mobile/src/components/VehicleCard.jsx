@@ -16,7 +16,7 @@ import { useCopy } from '@/constants/copy'
  * crosshair; it is computed on-device and the position never leaves the phone.
  * Still no ETA — traffic makes any minutes figure invented.
  */
-export const VehicleCard = memo(({ vehicle, onPress, nearest = false }) => {
+export const VehicleCard = memo(({ vehicle, onPress, nearest = false, passesNote = null }) => {
 	const copy = useCopy()
 	const myLocation = useStore(s => s.myLocation)
 	const away = vehicle.position ? distanceM(myLocation, vehicle.position) : null
@@ -57,6 +57,12 @@ export const VehicleCard = memo(({ vehicle, onPress, nearest = false }) => {
 				{nearest && (
 					<Txt variant="caption" className="text-capacity-open-fg">{copy.vehicle.nearest}</Txt>
 				)}
+
+				{/* On a destination search: how close this ride actually runs to
+				    the place asked for — the corridor is wide, so say the number. */}
+				{!!passesNote && (
+					<Txt variant="caption" className="text-fg-secondary" numberOfLines={1}>{passesNote}</Txt>
+				)}
 			</View>
 
 			<View className="w-[84px] items-end gap-1">
@@ -71,6 +77,7 @@ export const VehicleCard = memo(({ vehicle, onPress, nearest = false }) => {
 	// A poll rebuilds every vehicle object; only these fields reach pixels.
 	// myLocation comes from the store subscription, untouched by this memo.
 	prev.nearest === next.nearest &&
+	prev.passesNote === next.passesNote &&
 	prev.onPress === next.onPress &&
 	prev.vehicle.destination === next.vehicle.destination &&
 	prev.vehicle.plate_number === next.vehicle.plate_number &&

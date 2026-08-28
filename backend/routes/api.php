@@ -39,7 +39,8 @@ Route::get('/routes/for-destination', function (Request $request, CorridorMatche
         return response()->json(['data' => null]);
     }
 
-    $ids = $corridor->routeIdsNear($place->lat, $place->lng);
+    // The driver's own preview: same tight rule the trip resolver uses.
+    $ids = $corridor->routeIdsNear($place->lat, $place->lng, CorridorMatcher::SERVES_RADIUS_M);
     $route = $ids ? Routes::find($ids[0]) : null;
 
     return response()->json(['data' => $route]);

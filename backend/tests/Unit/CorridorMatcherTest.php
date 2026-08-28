@@ -36,14 +36,18 @@ it('does not match a point beyond the end of the line', function () use ($taft) 
     expect($distance)->toBeGreaterThan(1500.0);
 });
 
-it('treats a point just inside 400 m as on the corridor and one outside as off it', function () use ($taft) {
+it('separates a point on the corridor from one a kilometre off it', function () use ($taft) {
     // ~0.0027° of longitude ≈ 290 m at this latitude.
     $inside = $this->corridor->minDistanceToRoute(14.5455, 121.0000, $taft);
-    // ~0.0090° ≈ 970 m.
+    // ~0.0090° ≈ 1 km.
     $outside = $this->corridor->minDistanceToRoute(14.5455, 121.0066, $taft);
 
-    expect($inside)->toBeLessThan(CorridorMatcher::CORRIDOR_RADIUS_M)
-        ->and($outside)->toBeGreaterThan(CorridorMatcher::CORRIDOR_RADIUS_M);
+    // Tight rule (does this corridor SERVE the place): only the near point.
+    expect($inside)->toBeLessThan(CorridorMatcher::SERVES_RADIUS_M)
+        ->and($outside)->toBeGreaterThan(CorridorMatcher::SERVES_RADIUS_M)
+        // Commuter rule (does it PASS the place): a kilometre still counts,
+        // because a ride running past your mall is still your ride.
+        ->and($outside)->toBeLessThan(CorridorMatcher::CORRIDOR_RADIUS_M);
 });
 
 it('computes a plausible route length', function () use ($taft) {

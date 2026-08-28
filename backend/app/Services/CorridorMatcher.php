@@ -13,8 +13,21 @@ use Illuminate\Support\Collection;
  */
 class CorridorMatcher
 {
-    /** Metres either side of the destination that still counts as passing it. */
-    public const CORRIDOR_RADIUS_M = 400;
+    /**
+     * Metres either side of a destination that still counts as passing it,
+     * for COMMUTER search. Generous on purpose: a jeepney bound elsewhere
+     * that runs past your mall is still your ride — the Nepo-Dau route
+     * passes SM City Clark 966 m out. Cards show the actual distance, so a
+     * wide net informs rather than misleads.
+     */
+    public const CORRIDOR_RADIUS_M = 1500;
+
+    /**
+     * Tighter: what it takes for an existing corridor to SERVE a driver's
+     * declared destination. Loose matching here would put a driver on a
+     * route that never reaches where they said they are going.
+     */
+    public const SERVES_RADIUS_M = 400;
 
     private const EARTH_RADIUS_M = 6_371_000;
 

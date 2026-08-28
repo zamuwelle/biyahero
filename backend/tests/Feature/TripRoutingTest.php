@@ -27,6 +27,11 @@ beforeEach(function () {
     // nominatim wildcard here would swallow every per-test nominatim fake.
     Http::fake(['router.project-osrm.org/*' => Http::response(null, 503)]);
 
+    // Nothing here may touch the network: an unfaked URL is executed for
+    // real by Laravel's partial fake, which once let a live Nominatim
+    // lookup decide a test's outcome.
+    Http::preventStrayRequests();
+
     $this->seed(DatabaseSeeder::class);
 });
 

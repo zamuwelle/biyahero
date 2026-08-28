@@ -59,6 +59,10 @@ class ActiveVehicleResource extends JsonResource
                 'waypoints' => $trip->route?->waypoints ?? [],
             ],
 
+            // Only present on a destination search: how close this vehicle's
+            // route actually runs to the place the commuter typed.
+            'passes_within_m' => $trip->passes_within_m !== null ? (int) $trip->passes_within_m : null,
+
             'last_ping_at' => $vehicle->last_ping_at?->toIso8601String(),
             'minutes_since_ping' => $secondsSincePing === null ? null : (int) floor($secondsSincePing / 60),
             'is_stale' => $isStale,

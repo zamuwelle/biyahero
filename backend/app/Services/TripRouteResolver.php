@@ -136,7 +136,7 @@ class TripRouteResolver
      */
     private function reusableRoute(array $target, float $driverLat, float $driverLng): ?Route
     {
-        $nearDestination = $this->corridor->routeIdsNear($target['lat'], $target['lng']);
+        $nearDestination = $this->corridor->routeIdsNear($target['lat'], $target['lng'], CorridorMatcher::SERVES_RADIUS_M);
         if ($nearDestination === []) {
             return null;
         }

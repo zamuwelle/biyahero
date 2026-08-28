@@ -71,10 +71,12 @@ export const search = {
 	privacy: 'Naka-save sa device mo lang. Walang account at hindi hinihingi ang lokasyon mo.',
 	activeCount: n => `${n} sasakyan aktibo ngayon`,
 	/** Corridor match, not a route lookup — 400 m either side of the destination. */
-	resultsTitle: (n, dest) => `${n} sasakyan papuntang ${dest}`,
-	resultsSubtitle: dest => `Mga rutang dumadaan sa loob ng 400 m ng ${dest}`,
-	emptyTitle: dest => `Walang sasakyan papuntang ${dest}`,
-	emptyBody: 'Walang aktibong drayber sa rutang ito ngayon. Karaniwan itong nangyayari pagkatapos ng 9 PM.',
+	resultsTitle: (n, dest) => `${n} sasakyan dumadaan sa ${dest}`,
+	resultsSubtitle: (dest, radius) => `Mga rutang dumadaan sa loob ng ${radius} ng ${dest}`,
+	emptyTitle: dest => `Walang sasakyan na dumadaan sa ${dest}`,
+	emptyBody: 'Walang aktibong drayber na dumadaan diyan ngayon. Karaniwan itong nangyayari pagkatapos ng 9 PM.',
+	searchAnywhere: q => `Hanapin ang "${q}"`,
+	searchAnywhereHint: 'Kahit saang lugar — ipapakita ang mga sasakyang dumadaan doon',
 	/** No destination typed — nothing is being filtered, there is simply nobody out. */
 	noneActiveTitle: 'Walang aktibong sasakyan ngayon',
 	noneActiveBody: 'Walang drayber na nagbo-broadcast sa ngayon. Subukan ulit maya-maya.',
@@ -95,6 +97,7 @@ export const vehicle = {
 	/** Straight-line distance — honest now, because the commuter opted in. */
 	away: m => (m < 1000 ? `${m} m ang layo sa iyo` : `${(m / 1000).toFixed(1)} km ang layo sa iyo`),
 	nearest: 'Pinakamalapit sa iyo',
+	passesWithin: (m, dest) => `Dumadaan ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} mula sa ${dest}`,
 	staleTitle: 'Huling alam na posisyon',
 	staleBody: 'Walang live na GPS. Ipinapakita ang oras kung kailan huling nakita.'
 }
