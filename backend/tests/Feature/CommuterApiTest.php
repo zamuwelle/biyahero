@@ -176,6 +176,10 @@ it('pins where each trip is headed, using the destination table not the route en
     Destination::query()->where('name', 'Baclaran')->firstOrFail()
         ->update(['lat' => 14.60000, 'lng' => 121.10000]);
 
+    // Clear the trips' own targets so the NAME-table fallback is what answers
+    // — that fallback still carries trips created before targets existed.
+    Trip::query()->active()->update(['dest_lat' => null, 'dest_lng' => null]);
+
     $response = $this->getJson('/api/active-vehicles')->assertOk();
 
     $bound = collect($response->json('data'))->where('destination', 'Baclaran');
@@ -188,8 +192,9 @@ it('pins where each trip is headed, using the destination table not the route en
 
 it('pins a free-typed trip destination via a contains match, like the trip and search paths', function () {
     $trip = Trip::query()->active()->firstOrFail();
-    // Drivers type destinations freehand: "Taft" must still pin "Taft Avenue".
-    $trip->update(['destination' => 'Taft']);
+    // Drivers type destinations freehand: "Taft" must still pin "Taft Avenue"
+    // when the trip has no exact target of its own.
+    $trip->update(['destination' => 'Taft', 'dest_lat' => null, 'dest_lng' => null]);
 
     $taft = Destination::query()->where('name', 'Taft Avenue')->firstOrFail();
 
@@ -201,7 +206,7 @@ it('pins a free-typed trip destination via a contains match, like the trip and s
 
 it('returns a null destination pin for a destination name it does not know', function () {
     $trip = Trip::query()->active()->firstOrFail();
-    $trip->update(['destination' => 'Kung Saan-Saan Lang']);
+    $trip->update(['destination' => 'Kung Saan-Saan Lang', 'dest_lat' => null, 'dest_lng' => null]);
 
     $this->getJson("/api/active-vehicles/{$trip->vehicle_id}")
         ->assertOk()

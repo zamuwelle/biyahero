@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Trip;
 use App\Models\User;
 use App\Services\LicenceIdentity;
 use Illuminate\Console\Command;
@@ -92,6 +93,18 @@ class ReviewDrivers extends Command
                 'approved_at' => null,
                 'rejection_reason' => $reason,
             ]);
+
+            // Pull them off the road NOW, not at their next trip: an open run
+            // keeps a revoked driver live on commuter maps.
+            $ended = Trip::query()
+                ->active()
+                ->whereHas('vehicle', fn ($q) => $q->where('user_id', $driver->id))
+                ->update(['ended_at' => now()]);
+
+            if ($ended > 0) {
+                $driver->vehicle?->update(['live_lat' => null, 'live_lng' => null, 'last_ping_at' => null]);
+                $this->warn("Ended {$ended} run(s) already in progress.");
+            }
 
             $this->warn("Revoked {$driver->name}. They can no longer start a trip.");
 

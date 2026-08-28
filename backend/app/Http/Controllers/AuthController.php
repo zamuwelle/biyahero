@@ -75,7 +75,9 @@ class AuthController extends Controller
                 'plate_number' => Vehicle::normalisePlate($validated['plate_number']),
                 'model' => $validated['model'] ?? null,
                 'body_number' => $validated['body_number'] ?? null,
-                'route_id' => 1,
+                // No route until they declare one: the route belongs to the
+                // TRIP. Defaulting to 1 put every new driver on a Manila line.
+                'route_id' => null,
             ]);
 
             return $user;

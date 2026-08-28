@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Destination;
 use App\Models\Trip;
 use App\Models\Vehicle;
 use Illuminate\Database\Seeder;
@@ -66,10 +67,18 @@ class TripSeeder extends Seeder
 
             $elapsed = max(1, (int) round(($route->duration_min ?: 30) * $progress));
 
+            // Pin the exact target so the app can mark it and can tell which
+            // way along the corridor this run is going.
+            $place = Destination::query()
+                ->get()
+                ->first(fn (Destination $d) => mb_strtolower($d->name) === mb_strtolower($destination));
+
             Trip::create([
                 'vehicle_id' => $vehicle->id,
                 'route_id' => $vehicle->route_id,
                 'destination' => $destination,
+                'dest_lat' => $place?->lat,
+                'dest_lng' => $place?->lng,
                 'capacity' => $capacity,
                 'started_at' => now()->subMinutes($elapsed),
                 // Distance actually covered so far, from the real route length.
@@ -97,6 +106,19 @@ class TripSeeder extends Seeder
         $count = $years * self::TRIPS_PER_YEAR;
         $spanDays = max(1, (int) $driver->created_at->diffInDays(now()));
 
+        // A route label is "Start → End"; a DESTINATION is one of those ends.
+        // Storing the whole label made history and the driver's route
+        // shortcuts read "Buendia → Baclaran" as a place, and left the
+        // direction of travel unknowable.
+        $ends = array_map('trim', preg_split('/→|->/u', (string) ($route->label ?? '')) ?: []);
+        $waypoints = $route->waypoints ?? [];
+        $terminals = count($ends) === 2 && count($waypoints) >= 2
+            ? [
+                [$ends[1], $waypoints[count($waypoints) - 1]],
+                [$ends[0], $waypoints[0]],
+            ]
+            : [[$route->label, null], [$route->label, null]];
+
         $rows = [];
         for ($i = 0; $i < $count; $i++) {
             // Space the history evenly across the driver's tenure.
@@ -104,10 +126,15 @@ class TripSeeder extends Seeder
             $started = now()->subDays($daysAgo)->setTime(6, 0)->addMinutes(($i % 12) * 45);
             $duration = max(5, $route->duration_min ?: 30);
 
+            // Real jeepneys shuttle: alternate ends run by run.
+            [$destination, $target] = $terminals[$i % 2];
+
             $rows[] = [
                 'vehicle_id' => $vehicle->id,
                 'route_id' => $route->id,
-                'destination' => $route->label,
+                'destination' => $destination,
+                'dest_lat' => $target['lat'] ?? null,
+                'dest_lng' => $target['lng'] ?? null,
                 'capacity' => 'unknown',
                 'started_at' => $started,
                 'ended_at' => $started->copy()->addMinutes($duration),

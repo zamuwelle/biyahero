@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Trip;
+use App\Models\User;
 use App\Services\TripRouteResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,7 +49,7 @@ class TripController extends Controller
         // Verification is the gate: an unapproved driver must not become
         // visible to commuters, however they reached this endpoint.
         if (! $driver->isApproved()) {
-            return $this->error('Hindi pa aprubado ang rehistro mo. Maghintay ng abiso.', 403);
+            return $this->error(self::standingMessage($driver), 403);
         }
 
         $vehicle = $driver->vehicle;
@@ -199,6 +200,13 @@ class TripController extends Controller
     {
         $this->authorizeTrip($request, $trip);
 
+        // A ping in flight when the driver hit "Tapusin" must not undo the
+        // end: it would re-plot a finished vehicle on commuter maps and
+        // rewrite a historical trip's distance.
+        if ($trip->ended_at !== null) {
+            return $this->error('Tapos na ang biyaheng ito.', 422);
+        }
+
         $validated = $request->validate([
             'lat' => 'required|numeric|between:-90,90',
             'lng' => 'required|numeric|between:-180,180',
@@ -283,8 +291,30 @@ class TripController extends Controller
     }
 
     /** An explicit route wins; otherwise pick one whose polyline passes the destination. */
+    /**
+     * Ownership AND standing. Approval used to be checked only when a trip
+     * was created, so a driver revoked mid-run kept pinging and stayed live
+     * on commuter maps for as long as their app was open.
+     */
     private function authorizeTrip(Request $request, Trip $trip): void
     {
-        abort_unless($trip->vehicle?->user_id === $request->user()->id, 403, 'Hindi ito ang biyahe mo.');
+        $driver = $request->user();
+
+        abort_unless($trip->vehicle?->user_id === $driver->id, 403, 'Hindi ito ang biyahe mo.');
+        abort_unless($driver->isApproved(), 403, self::standingMessage($driver));
+    }
+
+    /** Names the actual reason, rather than always saying "not yet approved". */
+    private static function standingMessage(User $driver): string
+    {
+        if ($driver->licenceHasExpired()) {
+            return 'Paso na ang lisensya mo. I-renew ito bago magbiyahe ulit.';
+        }
+
+        if ($driver->verification_status === 'rejected') {
+            return 'Hindi aprubado ang rehistro mo.';
+        }
+
+        return 'Hindi pa aprubado ang rehistro mo. Maghintay ng abiso.';
     }
 }

@@ -44,16 +44,23 @@ class Vehicle extends Model
         return $this->hasOne(Trip::class)->whereNull('ended_at')->latestOfMany();
     }
 
-    /** Live GPS if we have it, otherwise the simulated waypoint position. */
-    public function currentPosition(): array
+    /**
+     * Where this vehicle actually is, or null.
+     *
+     * There is no fallback on purpose: guessing from the profile route once
+     * plotted every driver who had not pinged yet onto a Manila corridor they
+     * had never driven. A vehicle nobody has heard from has no position, and
+     * the app renders that honestly.
+     *
+     * @return array{lat: float, lng: float}|null
+     */
+    public function currentPosition(): ?array
     {
-        if ($this->live_lat !== null && $this->live_lng !== null) {
-            return ['lat' => (float) $this->live_lat, 'lng' => (float) $this->live_lng];
+        if ($this->live_lat === null || $this->live_lng === null) {
+            return null;
         }
 
-        $waypoints = $this->route?->waypoints ?? [];
-
-        return $waypoints[$this->current_waypoint_index] ?? ($waypoints[0] ?? ['lat' => 0, 'lng' => 0]);
+        return ['lat' => (float) $this->live_lat, 'lng' => (float) $this->live_lng];
     }
 
     /**
