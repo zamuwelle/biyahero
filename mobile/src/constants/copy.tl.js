@@ -74,6 +74,8 @@ export const mapHome = {
 	updateNote: 'Nag-a-update kada 8 segundo · walang location permission',
 	updateNoteLocated: 'Nag-a-update kada 8 segundo · ipinapakita ang lokasyon mo',
 	myLocation: 'Ipakita ang lokasyon ko',
+	layers: 'Anyo ng mapa',
+	layerNames: { standard: 'Karaniwan', hybrid: 'Satellite', terrain: 'Terrain' },
 	myLocationOn: 'Ipinapakita na ang lokasyon mo',
 	myLocationOff: 'Itinago ang lokasyon mo',
 	near: plate => `Malapit na ang ${plate}!`,

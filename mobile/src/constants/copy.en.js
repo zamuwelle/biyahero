@@ -73,6 +73,8 @@ export const mapHome = {
 	updateNote: 'Updates every 8 seconds · no location permission',
 	updateNoteLocated: 'Updates every 8 seconds · showing your location',
 	myLocation: 'Show my location',
+	layers: 'Map type',
+	layerNames: { standard: 'Default', hybrid: 'Satellite', terrain: 'Terrain' },
 	myLocationOn: 'Now showing your location',
 	myLocationOff: 'Your location is hidden',
 	near: plate => `${plate} is close!`,

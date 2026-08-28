@@ -1,9 +1,12 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { View, Pressable } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
 import { VehicleGlyph } from './VehicleGlyph'
+import { Txt } from '@/components/ui/Txt'
+import { usePrefs, MAP_TYPES } from '@/services/prefs'
+import { useCopy } from '@/constants/copy'
 import { elevation } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 import { MAP_STYLES } from '@/theme/mapStyle'
@@ -152,6 +155,63 @@ const DestinationPin = ({ pin }) => {
 	)
 }
 
+const LAYER_ICONS = { standard: 'map', hybrid: 'satellite-alt', terrain: 'terrain' }
+
+/**
+ * Google-style layer switcher. Satellite is the reason it exists: a commuter
+ * who cannot place a street name can almost always recognise the roof of the
+ * terminal they are standing next to.
+ */
+const LayerPicker = ({ bottom }) => {
+	const copy = useCopy()
+	const { theme } = useTheme()
+	const mapType = usePrefs(s => s.mapType)
+	const setMapType = usePrefs(s => s.setMapType)
+	const [open, setOpen] = useState(false)
+
+	return (
+		<View style={{ position: 'absolute', right: 24, bottom }} className="items-end gap-2">
+			{open && (
+				<View style={elevation.float} className="gap-1 rounded-lg border-[1.5px] border-line-subtle bg-surface p-2">
+					{MAP_TYPES.map(type => (
+						<Pressable
+							key={type}
+							onPress={() => {
+								setMapType(type)
+								setOpen(false)
+							}}
+							accessibilityRole="button"
+							accessibilityState={{ selected: mapType === type }}
+							className={`flex-row items-center gap-2 rounded-md px-3 py-2 active:opacity-80 ${
+								mapType === type ? 'bg-brand-subtle' : ''
+							}`}
+						>
+							<MaterialIcons
+								name={LAYER_ICONS[type]}
+								size={18}
+								color={mapType === type ? theme.brand.hover : theme.icon.secondary}
+							/>
+							<Txt variant="bodyMStrong" className={mapType === type ? 'text-brand-hover' : 'text-fg-secondary'}>
+								{copy.mapHome.layerNames[type]}
+							</Txt>
+						</Pressable>
+					))}
+				</View>
+			)}
+
+			<Pressable
+				onPress={() => setOpen(o => !o)}
+				accessibilityRole="button"
+				accessibilityLabel={copy.mapHome.layers}
+				style={elevation.float}
+				className="h-14 w-14 items-center justify-center rounded-full border-[1.5px] border-line-subtle bg-surface active:opacity-80"
+			>
+				<MaterialIcons name="layers" size={24} color={open ? theme.brand.hover : theme.icon.secondary} />
+			</Pressable>
+		</View>
+	)
+}
+
 /**
  * Map Canvas. Desaturated on purpose: the map is the ground, vehicles are the
  * figure. Nothing here reads or displays the commuter's own position — there is
@@ -169,9 +229,12 @@ export const Map = ({
 	fitKey,
 	myLocation,
 	locateNonce = 0,
-	rememberRegion = false
+	rememberRegion = false,
+	// Clears the tallest sheet on any screen using this map.
+	controlsBottom = 420
 }) => {
 	const { theme, scheme } = useTheme()
+	const mapType = usePrefs(s => s.mapType)
 	const mapRef = useRef(null)
 	const [initialRegion, setInitialRegion] = useState(rememberRegion ? null : DEFAULT_REGION)
 	// Android silently drops camera commands issued before onMapReady. fitTo is
@@ -240,7 +303,9 @@ export const Map = ({
 				onRegionChangeComplete={region => {
 					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(region)).catch(() => {})
 				}}
-				customMapStyle={MAP_STYLES[scheme]}
+				mapType={mapType}
+				// Styling only applies to the drawn map; imagery ignores it.
+				customMapStyle={mapType === 'standard' ? MAP_STYLES[scheme] : []}
 				showsUserLocation={false}
 				showsMyLocationButton={false}
 				showsBuildings={true}
@@ -276,6 +341,8 @@ export const Map = ({
 					</SettledMarker>
 				)}
 			</MapView>
+
+			<LayerPicker bottom={controlsBottom} />
 		</View>
 	)
 }
