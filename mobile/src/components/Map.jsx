@@ -197,10 +197,10 @@ const PLACE_NEAR_DELTA = 0.05
  * named pin is 52dp of screen and cannot crowd; a dot is 22dp and can sit
  * close to its neighbours, so most of the density lives in the dot tier.
  */
-const PLACE_LABEL_CAP_FAR = 10
-const PLACE_LABEL_CAP_NEAR = 20
-const PLACE_DOT_CAP_FAR = 30
-const PLACE_DOT_CAP_NEAR = 55
+const PLACE_LABEL_CAP_FAR = 9
+const PLACE_LABEL_CAP_NEAR = 16
+const PLACE_DOT_CAP_FAR = 20
+const PLACE_DOT_CAP_NEAR = 34
 
 /**
  * How much of the viewport one pin claims, so two of them cannot print over
@@ -217,7 +217,21 @@ const PLACE_DOT_CLEAR_Y = 0.030
 const PLACE_DEBOUNCE_MS = 600
 
 /** Fetch wider than the screen so a short pan is already answered. */
-const PLACE_PAD = 0.35
+const PLACE_PAD = 0.5
+
+/**
+ * Draw a little past the edge as well. A pin that pops in and out as it
+ * crosses the boundary is a native marker created and destroyed each time,
+ * and that churn shows up as dropped frames while panning.
+ */
+const PLACE_OVERDRAW = 1.25
+
+/**
+ * How many places to keep from earlier viewports. Holding them means a pan
+ * that crosses into new ground ADDS markers instead of replacing every one;
+ * the bound stops a long session growing without limit.
+ */
+const PLACE_MEMORY = 250
 
 /** A region as map corners, optionally grown past what is on screen. */
 const boxFor = (region, pad = 0) => {
@@ -241,11 +255,12 @@ const boxCovers = (outer, inner) =>
 	outer.east >= inner.east
 
 /**
- * Short window: these are a glyph in a circle, nowhere near the SVG-and-font
- * race a vehicle pin has to win. It reopens on every camera settle, because
- * Android otherwise freezes whatever it caught mid-flight.
+ * Short window: these are a glyph in a circle, and the icon font is held at
+ * launch (see _layout), so there is no font race left to wait out. Pins mount
+ * only after the camera has settled and the fetch has returned, so the very
+ * first capture already happens on a still map.
  */
-const PLACE_SETTLE_MS = 900
+const PLACE_SETTLE_MS = 150
 
 /**
  * One place from Biyahero's own layer.
@@ -260,28 +275,28 @@ const PLACE_SETTLE_MS = 900
  *
  * Under the fleet on purpose. These are the ground the jeepneys move over.
  */
-const PlacePin = memo(({ place, labelled, redraw, mapType }) => {
+const PlacePin = memo(({ place, labelled, mapType }) => {
 	const { theme, scheme } = useTheme()
 	const terminal = place.kind === 'terminal'
 	// Dark ink on a pale grid, white on aerial photography — the same swap
 	// Google makes, because neither reads on the other's background.
 	const onImagery = mapType === 'hybrid'
 
+	// No elevation: an Android shadow is a separate render pass per marker,
+	// and with dozens on screen that was most of the cost. A hairline border
+	// separates the badge from the map for a fraction of the work.
 	const badge = (
 		<View
-			style={[
-				elevation.float,
-				{
-					width: labelled ? 26 : 20,
-					height: labelled ? 26 : 20,
-					borderRadius: labelled ? 13 : 10,
-					alignItems: 'center',
-					justifyContent: 'center',
-					backgroundColor: theme.surface.default,
-					borderColor: terminal ? theme.route[1] : theme.border.subtle,
-					borderWidth: terminal ? 2 : 1
-				}
-			]}
+			style={{
+				width: labelled ? 26 : 20,
+				height: labelled ? 26 : 20,
+				borderRadius: labelled ? 13 : 10,
+				alignItems: 'center',
+				justifyContent: 'center',
+				backgroundColor: theme.surface.default,
+				borderColor: terminal ? theme.route[1] : theme.border.subtle,
+				borderWidth: terminal ? 2 : 1
+			}}
 		>
 			<MaterialIcons
 				name={PLACE_ICONS[place.kind] ?? 'place'}
@@ -296,7 +311,7 @@ const PlacePin = memo(({ place, labelled, redraw, mapType }) => {
 			coordinate={place.position}
 			anchor={{ x: 0.5, y: 0.5 }}
 			zIndex={terminal ? 50 : labelled ? 40 : 35}
-			redrawKey={`${scheme}|${mapType}|${labelled}|${redraw}`}
+			redrawKey={`${scheme}|${mapType}|${labelled}`}
 			settleMs={PLACE_SETTLE_MS}
 			// Android draws this itself, so the name is safe from the bitmap
 			// cap — and it is the only way a dot says what it is.
@@ -332,7 +347,6 @@ const PlacePin = memo(({ place, labelled, redraw, mapType }) => {
 }, (prev, next) =>
 	prev.place.id === next.place.id &&
 	prev.labelled === next.labelled &&
-	prev.redraw === next.redraw &&
 	prev.mapType === next.mapType)
 
 const LAYER_ICONS = { standard: 'map', hybrid: 'satellite-alt', terrain: 'terrain' }
@@ -432,9 +446,6 @@ export const Map = ({
 	const [viewport, setViewport] = useState(null)
 	const [places, setPlaces] = useState([])
 	const fetchedBox = useRef(null)
-	// Bumped every time the camera stops, to reopen the place pins' capture
-	// window. Panning must not leave a field of half-drawn markers behind.
-	const [settleTick, setSettleTick] = useState(0)
 
 	useEffect(() => {
 		if (!rememberRegion) return
@@ -467,7 +478,17 @@ export const Map = ({
 			fetchNearbyPlaces(box)
 				.then(rows => {
 					fetchedBox.current = box
-					setPlaces(rows)
+					// Merge rather than replace: replacing unmounted every
+					// marker on screen and rebuilt it, which was the single
+					// biggest source of stutter while panning.
+					setPlaces(prev => {
+						// Not `new Map` — the component in this file is called
+						// Map and shadows the global.
+						const fresh = new Set(rows.map(p => p.id))
+						const all = [...prev.filter(p => !fresh.has(p.id)), ...rows]
+
+						return all.length > PLACE_MEMORY ? all.slice(all.length - PLACE_MEMORY) : all
+					})
 				})
 				// A map without shop pins is a smaller loss than a red box.
 				.catch(() => {})
@@ -479,16 +500,38 @@ export const Map = ({
 	// Trim the fetched box to what is actually on screen, then to what a phone
 	// can draw. The server already ordered them by how much a commuter needs
 	// them, so slicing keeps terminals and landmarks and drops the bakeries.
+	const view = viewport ?? initialRegion
+
+	// Which places get named depends on the camera, but it must not depend on
+	// every twitch of it: a 20 m nudge otherwise reshuffles the tiers, and
+	// every marker that changes tier is unmounted and rasterised again. That
+	// churn was most of the lag. Quantising to a fifth of the screen means a
+	// real pan re-tiers and a settle-in-place does not.
+	const layoutKey = view
+		? [
+			Math.round(view.latitude / (view.latitudeDelta / 5)),
+			Math.round(view.longitude / (view.longitudeDelta / 5)),
+			view.latitudeDelta.toFixed(3)
+		].join('|')
+		: 'none'
+
 	const visiblePlaces = useMemo(() => {
-		const view = viewport ?? initialRegion
 		if (!view || view.latitudeDelta > PLACE_MAX_DELTA) return []
 
-		const latPad = view.latitudeDelta / 2
-		const lngPad = view.longitudeDelta / 2
+		const latPad = (view.latitudeDelta / 2) * PLACE_OVERDRAW
+		const lngPad = (view.longitudeDelta / 2) * PLACE_OVERDRAW
 
-		const onScreen = places.filter(p =>
-			Math.abs(p.position.latitude - view.latitude) <= latPad &&
-			Math.abs(p.position.longitude - view.longitude) <= lngPad)
+		// Merged sets arrive in whatever order they were fetched, so the
+		// server's ranking is restored here: what a commuter needs most, then
+		// what is nearest the middle of the view.
+		const onScreen = places
+			.filter(p =>
+				Math.abs(p.position.latitude - view.latitude) <= latPad &&
+				Math.abs(p.position.longitude - view.longitude) <= lngPad)
+			.sort((a, b) =>
+				(a.rank - b.rank) ||
+				((a.position.latitude - view.latitude) ** 2 + (a.position.longitude - view.longitude) ** 2) -
+				((b.position.latitude - view.latitude) ** 2 + (b.position.longitude - view.longitude) ** 2))
 
 		const near = view.latitudeDelta <= PLACE_NEAR_DELTA
 		const labelCap = near ? PLACE_LABEL_CAP_NEAR : PLACE_LABEL_CAP_FAR
@@ -519,7 +562,10 @@ export const Map = ({
 		}
 
 		return kept
-	}, [places, viewport, initialRegion])
+		// `view` is deliberately not a dependency: layoutKey is its quantised
+		// form, and re-running on the raw camera is exactly the churn above.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [places, layoutKey])
 
 	// Crosshair tap: bring the commuter's own dot into view.
 	useEffect(() => {
@@ -573,7 +619,6 @@ export const Map = ({
 				onPoiClick={onMapPress}
 				onRegionChangeComplete={next => {
 					setViewport(next)
-					setSettleTick(t => t + 1)
 					if (rememberRegion) AsyncStorage.setItem(REGION_KEY, JSON.stringify(next)).catch(() => {})
 				}}
 				mapType={mapType}
@@ -581,7 +626,7 @@ export const Map = ({
 				customMapStyle={mapType === 'standard' ? MAP_STYLES[scheme] : []}
 				showsUserLocation={false}
 				showsMyLocationButton={false}
-				showsBuildings={true}
+				showsBuildings={false}
 				showsCompass={false}
 				toolbarEnabled={false}
 				rotateEnabled={false}
@@ -595,13 +640,7 @@ export const Map = ({
 				{/* Under everything else Biyahero draws: these are the ground the
 				    fleet moves over, not the thing being tracked. */}
 				{visiblePlaces.map(({ place, labelled }) => (
-					<PlacePin
-						key={place.id}
-						place={place}
-						labelled={labelled}
-						redraw={settleTick}
-						mapType={mapType}
-					/>
+					<PlacePin key={place.id} place={place} labelled={labelled} mapType={mapType} />
 				))}
 
 				{!!destinationPin && <DestinationPin pin={destinationPin} />}

@@ -113,6 +113,7 @@ export const fetchNearbyPlaces = ({ south, west, north, east }) =>
 				id: p.id,
 				name: p.name,
 				kind: p.kind,
+				rank: p.rank ?? 9,
 				position: { latitude: Number(p.lat), longitude: Number(p.lng) }
 			}))
 		)

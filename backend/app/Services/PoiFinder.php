@@ -261,7 +261,7 @@ class PoiFinder
      * One Overpass element into one pin, or null when it is not something we
      * can place on a map.
      *
-     * @return array{id: string, name: string, kind: string, lat: float, lng: float}|null
+     * @return array{id: string, name: string, kind: string, rank: int, lat: float, lng: float}|null
      */
     private function normalise(array $element): ?array
     {
@@ -300,6 +300,10 @@ class PoiFinder
             'id' => ($element['type'] ?? 'node').'/'.($element['id'] ?? 0),
             'name' => $name,
             'kind' => $kind,
+            // The client keeps places from several viewports at once so that
+            // panning does not tear down every marker. Merged sets lose our
+            // ordering, so it travels with the row and is re-sorted there.
+            'rank' => self::PRIORITY[$kind] ?? 9,
             'lat' => (float) $lat,
             'lng' => (float) $lng,
         ];

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { Stack } from 'expo-router'
 import { useFonts } from 'expo-font'
+import { MaterialIcons } from '@expo/vector-icons'
 import {
 	PlusJakartaSans_400Regular,
 	PlusJakartaSans_500Medium,
@@ -27,6 +28,11 @@ export default function RootLayout() {
 	const [minimumElapsed, setMinimumElapsed] = useState(false)
 
 	const [fontsLoaded] = useFonts({
+		// @expo/vector-icons loads its font lazily on first use, which a map
+		// marker cannot survive: Android rasterises the marker into a bitmap
+		// and freezes it, so a glyph that was still a missing-character box
+		// stays a box forever. Held with the text fonts so it is up first.
+		...MaterialIcons.font,
 		PlusJakartaSans_400Regular,
 		PlusJakartaSans_500Medium,
 		PlusJakartaSans_600SemiBold,
