@@ -7,7 +7,7 @@ import { Txt } from '@/components/ui/Txt'
 import { SearchBar } from '@/components/SearchBar'
 import { EmptyState } from '@/components/EmptyState'
 import { useStore } from '@/services/store'
-import { fetchDestinations } from '@/services/api'
+import { fetchDestinations, suggestPlaces } from '@/services/api'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
 
@@ -51,15 +51,34 @@ export default function DestinationSearch() {
 
 	useEffect(() => {
 		let cancelled = false
+		const typed = query.trim()
 		setLoading(true)
 
 		// Debounced so a fast typist does not fire a request per keystroke.
+		// Empty query: the popular list. Typed: anywhere on the map, with the
+		// places our own fleet serves marked and listed first.
 		const timer = setTimeout(() => {
-			fetchDestinations(query.trim() || undefined)
+			// Two characters is the suggest endpoint's floor; below it, our own
+			// destination list still answers rather than the screen going blank.
+			const request =
+				typed.length >= 2
+					? suggestPlaces(typed).then(places =>
+							places.map(p => ({
+								id: `${p.name}-${p.lat}-${p.lng}`,
+								name: p.name,
+								subtitle: p.subtitle,
+								lat: p.lat,
+								lng: p.lng,
+								known: p.known
+							}))
+						)
+					: fetchDestinations(typed || undefined)
+
+			request
 				.then(data => !cancelled && setResults(data))
 				.catch(() => !cancelled && setResults([]))
 				.finally(() => !cancelled && setLoading(false))
-		}, 220)
+		}, 300)
 
 		return () => {
 			cancelled = true
@@ -124,21 +143,25 @@ export default function DestinationSearch() {
 
 				<View>
 					<Txt variant="labelS" className="mb-1 text-fg-secondary">
-						{searching ? copy.search.resultsTitle(results.length, query.trim()) : copy.search.popular}
+						{searching ? copy.search.places : copy.search.popular}
 					</Txt>
 
 					{results.map(place => (
 						<PlaceRow
 							key={place.id}
-							icon="place"
-							tint={theme.brand.subtle}
+							icon={place.known === false ? 'place' : 'directions-bus'}
+							tint={place.known === false ? theme.surface.sunken : theme.brand.subtle}
 							name={place.name}
-							subtitle={copy.search.activeCount(place.active_count)}
+							subtitle={
+								place.active_count != null
+									? copy.search.activeCount(place.active_count)
+									: place.subtitle
+							}
 							onPress={() => choose(place)}
 						/>
 					))}
 
-					{searching && (
+					{searching && !loading && results.length === 0 && (
 						<PlaceRow
 							icon="travel-explore"
 							tint={theme.surface.sunken}

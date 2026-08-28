@@ -84,6 +84,25 @@ it('matches routes that pass the destination, nearest-passing first', function (
         ->and(max($distances))->toBeLessThanOrEqual(1500);
 });
 
+it('filters against the exact place the commuter picked, not a re-guessed name', function () {
+    // No geocoder call is allowed to happen: the coordinates came with the
+    // request, so a stray lookup would mean the server re-guessed the name.
+    Http::preventStrayRequests();
+
+    $taft = Destination::query()->where('name', 'Taft Avenue')->firstOrFail();
+
+    $response = $this->getJson(sprintf(
+        '/api/active-vehicles?destination=%s&dest_lat=%s&dest_lng=%s',
+        rawurlencode('Some Place The Table Never Heard Of'),
+        $taft->lat,
+        $taft->lng
+    ))->assertOk();
+
+    expect($response->json('data'))->not->toBeEmpty()
+        ->and($response->json('meta.destination'))->toBe('Some Place The Table Never Heard Of')
+        ->and($response->json('meta.destination_position.lat'))->toBe((float) $taft->lat);
+});
+
 it('never lets a stale vehicle head a destination search', function () {
     // RMV 5520 is seeded two hours stale on a Baclaran corridor; a live vehicle
     // shares that exact route, so the two tie on passing distance.

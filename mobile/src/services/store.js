@@ -195,6 +195,7 @@ export const useStore = create((set, get) => ({
 		try {
 			const { vehicles, meta } = await api.fetchActiveVehicles({
 				destination: destination?.name,
+				destCoords: destination?.lat != null ? { lat: destination.lat, lng: destination.lng } : undefined,
 				vehicleType: vehicleFilter
 			})
 			set({

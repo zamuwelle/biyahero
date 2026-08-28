@@ -271,6 +271,73 @@ it('rejects a place search that is too short to mean anything', function () {
     $this->getJson('/api/places/search?q=b')->assertUnprocessable();
 });
 
+it('offers the driver their three most recent routes, newest first, no repeats', function () {
+    $driver = actingDriver();
+
+    // Own the whole history for this vehicle so the ordering under test is the
+    // only ordering in play — the seeder ships runs of its own.
+    Trip::query()->where('vehicle_id', $driver->vehicle->id)->delete();
+
+    // Five finished runs across three routes, one of them repeated — the
+    // shortcut list must collapse repeats and keep only the latest three.
+    $routes = Route::query()->take(4)->pluck('id')->all();
+    $plan = [
+        [$routes[0], 'Baclaran', 5],
+        [$routes[1], 'Cubao', 4],
+        [$routes[0], 'Baclaran ulit', 3],
+        [$routes[2], 'Monumento', 2],
+        [$routes[3], 'Alabang', 1],
+    ];
+
+    foreach ($plan as [$routeId, $destination, $daysAgo]) {
+        Trip::create([
+            'vehicle_id' => $driver->vehicle->id,
+            'route_id' => $routeId,
+            'destination' => $destination,
+            'capacity' => 'open',
+            'started_at' => now()->subDays($daysAgo),
+            'ended_at' => now()->subDays($daysAgo)->addHour(),
+        ]);
+    }
+
+    $rows = $this->getJson('/api/routes/recent')->assertOk()->json('data');
+
+    expect($rows)->toHaveCount(3)
+        // Newest first: Alabang (1 day), Monumento (2), then the repeat of
+        // route[0] at 3 days — its 5-day-old run must not appear again.
+        ->and(array_column($rows, 'destination'))->toBe(['Alabang', 'Monumento', 'Baclaran ulit'])
+        ->and(array_column($rows, 'id'))->toBe([$routes[3], $routes[2], $routes[0]])
+        ->and($rows[0])->toHaveKeys(['id', 'label', 'length_km', 'destination', 'last_used_at']);
+});
+
+it('requires auth for recent routes', function () {
+    $this->getJson('/api/routes/recent')->assertUnauthorized();
+});
+
+it('suggests places to commuters without any position, fleet-served first', function () {
+    Http::fake([
+        'nominatim.openstreetmap.org/*' => Http::response([
+            // Far from every running route.
+            ['name' => 'Sample Far', 'lat' => '9.3000', 'lon' => '123.3000', 'display_name' => 'Sample Far, Negros Oriental, Philippines'],
+            // Sitting on the seeded Taft corridor.
+            ['name' => 'Sample Near', 'lat' => '14.5636', 'lon' => '120.9944', 'display_name' => 'Sample Near, Pasay, Metro Manila, Philippines'],
+        ]),
+    ]);
+
+    // Public: no token, and the endpoint accepts no coordinates at all.
+    $rows = $this->getJson('/api/places/suggest?q=sample')->assertOk()->json('data');
+
+    expect($rows)->not->toBeEmpty()
+        // A JSON list, not an object keyed by row index — the app maps over it.
+        ->and(array_is_list($rows))->toBeTrue()
+        ->and(array_column($rows, 'name'))->toBe(['Sample Near', 'Sample Far']);
+
+    // A position offered anyway must not change the answer.
+    $withPosition = $this->getJson('/api/places/suggest?q=sample&lat=9.3&lng=123.3')->assertOk()->json('data');
+
+    expect(array_column($withPosition, 'name'))->toBe(['Sample Near', 'Sample Far']);
+});
+
 it('stops a driver from rerouting another driver trip', function () {
     actingDriver();
 

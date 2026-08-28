@@ -134,6 +134,44 @@ class TripController extends Controller
         return $this->success($trip->load('route'), 'Napalitan ang ruta.');
     }
 
+    /**
+     * The routes this driver has actually run, most recent first. A jeepney
+     * driver repeats the same run daily, so their own history is a better
+     * shortcut than any list we could compute for them.
+     */
+    public function recentRoutes(Request $request): JsonResponse
+    {
+        $vehicle = $request->user()->vehicle;
+
+        if (! $vehicle) {
+            return $this->success([]);
+        }
+
+        $routes = Trip::query()
+            ->where('vehicle_id', $vehicle->id)
+            // Finished runs only: the trip they are on right now is not a
+            // shortcut to anywhere, it is where they already are.
+            ->whereNotNull('ended_at')
+            ->with('route')
+            ->latest('started_at')
+            ->take(30)
+            ->get()
+            ->filter(fn (Trip $trip) => $trip->route !== null)
+            // One row per route: the same run repeated all week is one shortcut.
+            ->unique('route_id')
+            ->take(3)
+            ->map(fn (Trip $trip) => [
+                'id' => $trip->route->id,
+                'label' => $trip->route->label ?? $trip->route->name,
+                'length_km' => (float) $trip->route->length_km,
+                'destination' => $trip->destination,
+                'last_used_at' => $trip->started_at?->toIso8601String(),
+            ])
+            ->values();
+
+        return $this->success($routes);
+    }
+
     /** Capacity is the driver's one-tap job while driving, so it gets its own route. */
     public function updateCapacity(Request $request, Trip $trip): JsonResponse
     {

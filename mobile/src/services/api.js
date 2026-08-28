@@ -61,11 +61,14 @@ const normaliseVehicle = v => {
  * the app never asks for a location permission, so it has nothing to send.
  */
 
-export const fetchActiveVehicles = ({ destination, vehicleType } = {}) =>
+export const fetchActiveVehicles = ({ destination, destCoords, vehicleType } = {}) =>
 	client
 		.get('/active-vehicles', {
 			params: {
 				...(destination ? { destination } : {}),
+				// The place the commuter picked — not where they are. Without it
+				// the server re-guesses the name and can land in another town.
+				...(destCoords ? { dest_lat: destCoords.lat, dest_lng: destCoords.lng } : {}),
 				...(vehicleType && vehicleType !== 'all' ? { vehicle_type: vehicleType } : {})
 			}
 		})
@@ -77,6 +80,23 @@ export const fetchActiveVehicles = ({ destination, vehicleType } = {}) =>
 
 export const fetchVehicle = id =>
 	client.get(`/active-vehicles/${id}`).then(res => normaliseVehicle(res.data?.data ?? res.data))
+
+/**
+ * Commuter type-ahead — anywhere on the map. Public and position-free: the
+ * server ranks by where the fleet runs, not by where the commuter is.
+ */
+export const suggestPlaces = q =>
+	client
+		.get('/places/suggest', { params: { q } })
+		.then(res =>
+			(res.data?.data ?? []).map(p => ({
+				name: p.name,
+				subtitle: p.subtitle,
+				known: !!p.known,
+				lat: Number(p.lat),
+				lng: Number(p.lng)
+			}))
+		)
 
 export const fetchDestinations = q =>
 	client.get('/destinations', { params: q ? { q } : {} }).then(res => res.data?.data ?? [])
@@ -165,6 +185,18 @@ export const searchPlaces = (q, position) =>
 				coords: { latitude: Number(p.lat), longitude: Number(p.lng) }
 			}))
 		)
+
+/** The driver's own last few routes — one tap to run the same line again. */
+export const fetchRecentRoutes = () =>
+	client.get('/routes/recent').then(res =>
+		(res.data?.data ?? []).map(r => ({
+			id: r.id,
+			label: r.label,
+			length_km: Number(r.length_km ?? 0),
+			destination: r.destination,
+			lastUsedAt: r.last_used_at
+		}))
+	)
 
 /** Routes whose corridor passes near the DRIVER — never called commuter-side. */
 export const fetchNearbyRoutes = ({ latitude, longitude }) =>

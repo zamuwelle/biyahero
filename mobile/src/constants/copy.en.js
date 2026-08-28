@@ -3,6 +3,28 @@
  * must exist here, or a screen renders `undefined` the moment the user switches.
  */
 
+/**
+ * Whole CALENDAR days between a timestamp and now — 0 means today. Counting
+ * 24-hour blocks instead would call last night's 9 PM run "today" at 7 AM,
+ * which is exactly when a jeepney driver reads this.
+ */
+const daysSince = iso => {
+	const then = iso ? new Date(iso) : null
+	if (!then || Number.isNaN(then.getTime())) return null
+
+	const midnight = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+
+	return Math.max(0, Math.round((midnight(new Date()) - midnight(then)) / 86_400_000))
+}
+
+const relativeDay = iso => {
+	const days = daysSince(iso)
+	if (days === null) return 'recently'
+	if (days === 0) return 'today'
+	if (days === 1) return 'yesterday'
+	return `${days} days ago`
+}
+
 export const app = {
 	name: 'Biyahero',
 	tagline: 'Know which ride is coming your way — without signing up.'
@@ -66,6 +88,7 @@ export const mapHome = {
 export const search = {
 	placeholder: 'Where are you going?',
 	recent: 'RECENT SEARCHES',
+	places: 'PLACES',
 	popular: 'POPULAR DESTINATIONS',
 	privacy: 'Saved on your device only. No account, and your location is never requested.',
 	activeCount: n => `${n} vehicle${n === 1 ? '' : 's'} active now`,
@@ -225,6 +248,8 @@ export const startTrip = {
 	noPlaces: 'No place found. Try another name or pin it on the map.',
 	searchFailed: 'Search is unreachable. Try again or pin it on the map.',
 	nearbyLabel: 'ROUTES NEAR YOU',
+	recentLabel: 'YOUR RECENT ROUTES',
+	recentMeta: (km, iso) => `${km} km · last run ${relativeDay(iso)}`,
 	nearbyMeta: (km, m) => `${km} km · passes ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} from you`,
 	pickOnMap: 'Pin on the map',
 	pinHint: 'Tap the map where you are headed',

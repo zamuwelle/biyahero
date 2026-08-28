@@ -3,25 +3,117 @@
 namespace App\Http\Controllers;
 
 use App\Models\Destination;
+use App\Models\Trip;
+use App\Services\CorridorMatcher;
 use App\Services\Geocoder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Type-ahead for the driver's "Saan ka papunta?" field.
+ * Place type-ahead for both sides of the app.
  *
  * Places already known to Biyahero come first — picking one keeps trips on
  * the corridors commuters are already searching — then anywhere else in the
- * Philippines via OpenStreetMap, so a driver in a town we have never seen
- * still gets a real, exact destination instead of free text.
+ * Philippines via OpenStreetMap, so a town we have never seen still yields a
+ * real, exact destination instead of free text.
  *
- * Driver-side only (auth): it takes a position to bias results, and no
- * commuter screen may ever send one.
+ * The two entry points differ only in how they RANK, and that difference is
+ * the privacy line: search() is driver-side (auth) and ranks by distance from
+ * the driver's own position, while suggest() is public and ranks by distance
+ * to the running fleet, because no commuter position exists to rank with.
  */
 class PlaceController extends Controller
 {
-    public function __construct(protected Geocoder $geocoder) {}
+    public function __construct(
+        protected Geocoder $geocoder,
+        protected CorridorMatcher $corridor,
+    ) {}
+
+    /**
+     * Type-ahead for the COMMUTER's "Saan ka pupunta?" — public, and it takes
+     * no position at all. Ranking comes from where the fleet actually runs
+     * instead: a place several jeepneys pass is a more useful answer than a
+     * namesake in another province, and the server already knows every active
+     * route without asking the commuter anything.
+     */
+    public function suggest(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['q' => 'required|string|min:2|max:120']);
+
+        $needle = mb_strtolower(trim($validated['q']));
+
+        $known = Destination::query()
+            ->get()
+            ->filter(fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle))
+            ->take(4)
+            ->map(fn (Destination $d) => [
+                'name' => $d->name,
+                'subtitle' => $d->subtitle ?? '',
+                'lat' => (float) $d->lat,
+                'lng' => (float) $d->lng,
+                'known' => true,
+            ])
+            // Without this the filtered collection keeps its original keys and
+            // the whole payload serialises as a JSON object, not a list.
+            ->values();
+
+        $cacheKey = 'suggest:'.md5($needle);
+        $found = Cache::get($cacheKey);
+
+        if ($found === null) {
+            $found = $this->geocoder->searchMany($validated['q'], null, null, 12, allowBilled: false);
+
+            if ($found !== []) {
+                Cache::put($cacheKey, $found, 300);
+            }
+        }
+
+        // Every polyline currently carrying a vehicle, loaded once — and only
+        // when there are candidates to rank against it.
+        $liveRoutes = $found === [] ? [] : Trip::query()
+            ->active()
+            ->with('route')
+            ->get()
+            ->pluck('route')
+            ->filter()
+            ->unique('id')
+            ->map(fn ($route) => $route->waypoints ?? [])
+            ->filter()
+            ->all();
+
+        $places = collect($found)
+            // Same name AND same place — never name alone. "Victoria" exists in
+            // half a dozen provinces, and hiding all but ours would strand
+            // anyone searching for one of the others.
+            ->reject(fn (array $p) => $known->contains(
+                fn (array $k) => mb_strtolower($k['name']) === mb_strtolower($p['name'])
+                    && $this->roughDistanceKm($k['lat'], $k['lng'], $p['lat'], $p['lng']) <= 2
+            ))
+            ->map(fn (array $p) => [...$p, 'known' => false])
+            ->sortBy(fn (array $p) => $this->distanceToFleetM($p['lat'], $p['lng'], $liveRoutes))
+            ->take(6)
+            ->values();
+
+        return response()->json(['data' => $known->concat($places)->all()]);
+    }
+
+    /**
+     * How far a place sits from the nearest route with a vehicle on it. INF
+     * when nothing is running, which leaves the geocoder's own order intact.
+     *
+     * @param  array<array<array{lat: float, lng: float}>>  $routes
+     */
+    private function distanceToFleetM(float $lat, float $lng, array $routes): float
+    {
+        $nearest = INF;
+
+        foreach ($routes as $waypoints) {
+            $nearest = min($nearest, $this->corridor->minDistanceToRoute($lat, $lng, $waypoints));
+        }
+
+        return $nearest;
+    }
 
     public function search(Request $request): JsonResponse
     {

@@ -56,9 +56,11 @@ class Geocoder
      *
      * @return array<array{name: string, subtitle: string, lat: float, lng: float}>
      */
-    public function searchMany(string $query, ?float $nearLat = null, ?float $nearLng = null, int $limit = 6): array
+    public function searchMany(string $query, ?float $nearLat = null, ?float $nearLng = null, int $limit = 6, bool $allowBilled = true): array
     {
-        $google = $this->searchGoogle($query, $nearLat, $nearLng, $limit);
+        // Public callers stay on the free provider: a billed API behind an
+        // unauthenticated endpoint is somebody else's budget to burn.
+        $google = $allowBilled ? $this->searchGoogle($query, $nearLat, $nearLng, $limit) : [];
 
         if ($google !== []) {
             return $google;

@@ -28,6 +28,10 @@ Route::get('/active-vehicles', [ActiveVehicleController::class, 'index']);
 Route::get('/active-vehicles/{vehicle}', [ActiveVehicleController::class, 'show']);
 Route::get('/destinations', [DestinationController::class, 'index']);
 
+// Commuter type-ahead. Deliberately position-free: candidates are ranked by
+// how close they sit to routes the fleet is actually running.
+Route::get('/places/suggest', [PlaceController::class, 'suggest'])->middleware('throttle:40,1');
+
 Route::get('/routes/for-destination', function (Request $request, CorridorMatcher $corridor) {
     $validated = $request->validate(['destination' => 'required|string|max:120']);
 
@@ -82,6 +86,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/trips/{trip}/capacity', [TripController::class, 'updateCapacity']);
 
     Route::get('/places/search', [PlaceController::class, 'search']);
+    Route::get('/routes/recent', [TripController::class, 'recentRoutes']);
 
     // Driver-facing: which routes pass near where I am standing? Lives behind
     // auth on purpose — no commuter-side code may ever send a position.

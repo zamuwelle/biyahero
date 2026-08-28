@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
-import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, searchPlaces } from '@/services/api'
+import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces } from '@/services/api'
 import { MAP_STYLES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -39,6 +39,7 @@ export default function StartTrip() {
 	const [destination, setDestination] = useState('')
 	const [position, setPosition] = useState(null)
 	const [nearby, setNearby] = useState([])
+	const [recent, setRecent] = useState([])
 	const [selectedRouteId, setSelectedRouteId] = useState(null)
 	const [pinned, setPinned] = useState(null)
 	const [picking, setPicking] = useState(false)
@@ -59,9 +60,23 @@ export default function StartTrip() {
 	// the choice itself must not immediately re-open the list.
 	const chosenTextRef = useRef('')
 
-	// The driver's fix seeds everything: the nearby-route list and the point a
-	// new route would start from. Drivers granted location long ago (trips
-	// need it), so this resolves quietly.
+	// The same run, again: a driver's own last three routes beat anything we
+	// could infer for them.
+	useEffect(() => {
+		let cancelled = false
+
+		fetchRecentRoutes()
+			.then(rows => !cancelled && setRecent(rows))
+			.catch(() => {})
+
+		return () => {
+			cancelled = true
+		}
+	}, [])
+
+	// The driver's fix seeds the fallback route list and the point a new route
+	// would start from. Drivers granted location long ago (trips need it), so
+	// this resolves quietly.
 	useEffect(() => {
 		let cancelled = false
 
@@ -190,6 +205,10 @@ export default function StartTrip() {
 			clearTimeout(timer)
 		}
 	}, [destination, selectedRouteId, pinned, pickedKnown, driver])
+
+	// Their own history leads; corridors near them follow. Replacing one with
+	// the other would strand a driver working away from their usual run.
+	const routeShortcuts = [...recent, ...nearby.filter(n => !recent.some(r => r.id === n.id))]
 
 	const typeDestination = text => {
 		chosenRef.current++
@@ -378,11 +397,14 @@ export default function StartTrip() {
 						{!!pinned && <MaterialIcons name="check-circle" size={18} color={theme.text.success} />}
 					</Pressable>
 
-					{nearby.length > 0 && (
+					{routeShortcuts.length > 0 && (
 						<View className="gap-3">
-							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.nearbyLabel}</Txt>
+							<Txt variant="labelS" className="text-fg-secondary">
+								{recent.length > 0 ? copy.startTrip.recentLabel : copy.startTrip.nearbyLabel}
+							</Txt>
+							{/* Both lists can show at once, so each row says which it is. */}
 							<View className="gap-2">
-								{nearby.map(r => (
+								{routeShortcuts.map(r => (
 									<Pressable
 										key={r.id}
 										onPress={() => pickNearby(r)}
@@ -393,7 +415,9 @@ export default function StartTrip() {
 									>
 										<Txt variant="bodyMStrong" numberOfLines={1}>{r.label}</Txt>
 										<Txt variant="caption" className="text-fg-secondary">
-											{copy.startTrip.nearbyMeta(r.length_km, r.distance_m)}
+											{r.distance_m != null
+												? copy.startTrip.nearbyMeta(r.length_km, r.distance_m)
+												: copy.startTrip.recentMeta(r.length_km, r.lastUsedAt)}
 										</Txt>
 									</Pressable>
 								))}

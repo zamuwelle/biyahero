@@ -32,6 +32,12 @@ class ActiveVehicleController extends Controller
         $validated = $request->validate([
             'destination' => 'nullable|string|max:120',
             'vehicle_type' => 'nullable|string|in:jeepney,ejeep,bus,uv_express',
+            // The exact point the commuter picked from the suggestion list.
+            // This is the DESTINATION, never the commuter — without it the
+            // server would re-guess the name and could land in another
+            // province, leaving the map pin and the list disagreeing.
+            'dest_lat' => 'nullable|required_with:dest_lng|numeric|between:-90,90',
+            'dest_lng' => 'nullable|required_with:dest_lat|numeric|between:-180,180',
         ]);
 
         $trips = Trip::query()
@@ -48,7 +54,13 @@ class ActiveVehicleController extends Controller
         $place = null;
 
         if (! empty($validated['destination'])) {
-            $place = $this->resolveDestination($validated['destination']);
+            $place = isset($validated['dest_lat'], $validated['dest_lng'])
+                ? [
+                    'lat' => (float) $validated['dest_lat'],
+                    'lng' => (float) $validated['dest_lng'],
+                    'name' => $validated['destination'],
+                ]
+                : $this->resolveDestination($validated['destination']);
 
             if (! $place) {
                 return response()->json([

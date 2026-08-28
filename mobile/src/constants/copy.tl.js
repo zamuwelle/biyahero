@@ -3,6 +3,28 @@
  * Every key here must have a mirror in copy.en.js; copy.js swaps whole modules.
  */
 
+/**
+ * Whole CALENDAR days between a timestamp and now — 0 means today. Counting
+ * 24-hour blocks instead would call last night's 9 PM run "today" at 7 AM,
+ * which is exactly when a jeepney driver reads this.
+ */
+const daysSince = iso => {
+	const then = iso ? new Date(iso) : null
+	if (!then || Number.isNaN(then.getTime())) return null
+
+	const midnight = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+
+	return Math.max(0, Math.round((midnight(new Date()) - midnight(then)) / 86_400_000))
+}
+
+const relativeDay = iso => {
+	const days = daysSince(iso)
+	if (days === null) return 'kamakailan'
+	if (days === 0) return 'ngayong araw'
+	if (days === 1) return 'kahapon'
+	return `${days} araw ang nakalipas`
+}
+
 export const app = {
 	name: 'Biyahero',
 	tagline: 'Alamin kung anong sasakyan ang papunta sa iyo — nang hindi nagra-rehistro.'
@@ -67,6 +89,7 @@ export const mapHome = {
 export const search = {
 	placeholder: 'Saan ka pupunta?',
 	recent: 'MGA HULING HINANAP',
+	places: 'MGA LUGAR',
 	popular: 'MGA SIKAT NA DESTINASYON',
 	privacy: 'Naka-save sa device mo lang. Walang account at hindi hinihingi ang lokasyon mo.',
 	activeCount: n => `${n} sasakyan aktibo ngayon`,
@@ -279,6 +302,8 @@ export const startTrip = {
 	noPlaces: 'Walang nahanap na lugar. Subukan ang ibang pangalan o ituro sa mapa.',
 	searchFailed: 'Hindi maabot ang paghahanap. Subukan ulit o ituro sa mapa.',
 	nearbyLabel: 'MGA RUTA MALAPIT SA IYO',
+	recentLabel: 'MGA HULING RUTA MO',
+	recentMeta: (km, iso) => `${km} km · huling binyahe ${relativeDay(iso)}`,
 	nearbyMeta: (km, m) => `${km} km · dumadaan ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} mula sa iyo`,
 	pickOnMap: 'Ituro sa mapa',
 	pinHint: 'I-tap ang mapa kung saan ang punta mo',
