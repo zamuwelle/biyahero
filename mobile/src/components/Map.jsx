@@ -161,8 +161,11 @@ const LAYER_ICONS = { standard: 'map', hybrid: 'satellite-alt', terrain: 'terrai
  * Google-style layer switcher. Satellite is the reason it exists: a commuter
  * who cannot place a street name can almost always recognise the roof of the
  * terminal they are standing next to.
+ *
+ * Unpositioned on purpose — it sits in the Map's control column so it lines up
+ * with whatever else a screen stacks there.
  */
-const LayerPicker = ({ bottom }) => {
+const LayerPicker = () => {
 	const copy = useCopy()
 	const { theme } = useTheme()
 	const mapType = usePrefs(s => s.mapType)
@@ -170,7 +173,7 @@ const LayerPicker = ({ bottom }) => {
 	const [open, setOpen] = useState(false)
 
 	return (
-		<View style={{ position: 'absolute', right: 24, bottom }} className="items-end gap-2">
+		<View className="items-end gap-2">
 			{open && (
 				<View style={elevation.float} className="gap-1 rounded-lg border-[1.5px] border-line-subtle bg-surface p-2">
 					{MAP_TYPES.map(type => (
@@ -230,6 +233,9 @@ export const Map = ({
 	myLocation,
 	locateNonce = 0,
 	rememberRegion = false,
+	// Extra round controls (a crosshair, say) stacked under the layer button in
+	// the same column, so every screen's controls share one right edge.
+	controls,
 	// Clears the tallest sheet on any screen using this map.
 	controlsBottom = 420
 }) => {
@@ -342,7 +348,12 @@ export const Map = ({
 				)}
 			</MapView>
 
-			<LayerPicker bottom={controlsBottom} />
+			{/* One column owns every floating control: two absolutely positioned
+			    siblings drift apart the moment their paddings differ. */}
+			<View style={{ position: 'absolute', right: 24, bottom: controlsBottom }} className="items-end gap-3">
+				<LayerPicker />
+				{controls}
+			</View>
 		</View>
 	)
 }

@@ -147,6 +147,23 @@ export default function MapHome() {
 		return [...vehicles].sort((a, b) => (a.stale - b.stale) || (rank(a) - rank(b)) || (a.id - b.id))
 	}, [vehicles, located, myLocation])
 
+	// Crosshair: the ONLY way the app ever asks for a commuter location. It
+	// rides in the map's own control column so it and the layer button share a
+	// right edge and an even gap, the way a map app stacks its buttons.
+	const crosshair = (
+		<Pressable
+			onPress={onCrosshair}
+			onLongPress={toggleMyLocation}
+			accessibilityRole="button"
+			accessibilityLabel={copy.mapHome.myLocation}
+			accessibilityState={{ selected: myLocationOn }}
+			style={elevation.float}
+			className="h-14 w-14 items-center justify-center rounded-full border-[1.5px] border-line-subtle bg-surface active:opacity-80"
+		>
+			<MaterialIcons name={myLocationOn ? 'my-location' : 'location-searching'} size={24} color={myLocationOn ? '#1A73E8' : theme.icon.secondary} />
+		</Pressable>
+	)
+
 	return (
 		<View className="flex-1 bg-surface-canvas">
 			<StatusBar style={statusBar} />
@@ -162,6 +179,8 @@ export default function MapHome() {
 				fitTo={fitTo}
 				myLocation={myLocation}
 				locateNonce={locateNonce}
+				controls={crosshair}
+				controlsBottom={350}
 			/>
 
 			<View style={{ top: insets.top + 6 }} className="absolute left-6 right-6 flex-row items-center gap-2">
@@ -182,19 +201,6 @@ export default function MapHome() {
 					<MaterialIcons name="settings" size={22} color={theme.icon.secondary} />
 				</Pressable>
 			</View>
-
-			{/* Crosshair: the ONLY way the app ever asks for a commuter location. */}
-			<Pressable
-				onPress={onCrosshair}
-				onLongPress={toggleMyLocation}
-				accessibilityRole="button"
-				accessibilityLabel={copy.mapHome.myLocation}
-				accessibilityState={{ selected: myLocationOn }}
-				style={elevation.float}
-				className="absolute bottom-[350px] right-6 h-14 w-14 items-center justify-center rounded-full border-[1.5px] border-line-subtle bg-surface active:opacity-80"
-			>
-				<MaterialIcons name={myLocationOn ? 'my-location' : 'location-searching'} size={24} color={myLocationOn ? '#1A73E8' : theme.icon.secondary} />
-			</Pressable>
 
 			<Sheet
 				peekHeight={330}
