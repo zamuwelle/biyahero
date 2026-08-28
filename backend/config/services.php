@@ -39,14 +39,4 @@ return [
         'url' => env('AI_SERVICE_URL', 'http://127.0.0.1:8000'),
     ],
 
-    /*
-     * Places search. With a key whose project has Places API (New) enabled,
-     * the driver's destination search sees exactly what Google Maps sees —
-     * terminals, tindahan, landmarks. Without one it falls back to
-     * OpenStreetMap, which knows towns and streets but few businesses.
-     */
-    'google' => [
-        'maps_key' => env('GOOGLE_MAPS_API_KEY'),
-    ],
-
 ];

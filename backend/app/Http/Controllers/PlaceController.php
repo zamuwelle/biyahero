@@ -62,7 +62,7 @@ class PlaceController extends Controller
         $found = Cache::get($cacheKey);
 
         if ($found === null) {
-            $found = $this->geocoder->searchMany($validated['q'], null, null, 12, allowBilled: false);
+            $found = $this->geocoder->searchMany($validated['q'], null, null, 12);
 
             if ($found !== []) {
                 Cache::put($cacheKey, $found, 300);

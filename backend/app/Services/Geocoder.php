@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Log;
  * type ANY town — not just the seeded ones — and still get a real point on
  * the map. Failures return null and the caller degrades honestly instead of
  * guessing.
+ *
+ * One provider by choice: no paid geocoder, so nothing here needs a key or a
+ * billing account, and the app behaves the same on every machine.
  */
 class Geocoder
 {
@@ -50,87 +53,15 @@ class Geocoder
      * Type-ahead search: several candidates, biased toward the driver so
      * "Poblacion" offers the one beside them before a namesake province away.
      *
-     * Google Places first when a key is configured — it knows the terminals,
-     * tindahan and landmarks drivers name, which OpenStreetMap largely does
-     * not. OSM is the fallback, so search still works with no key at all.
+     * OpenStreetMap only, on purpose. It knows every town, barangay and street
+     * in the country and costs nothing, which is the trade Biyahero wants: no
+     * key to leak, no billing account, no per-keystroke charge. The gap is
+     * businesses — a sari-sari store or a mall by brand name is often missing —
+     * and seeded Destinations cover the ones that matter.
      *
      * @return array<array{name: string, subtitle: string, lat: float, lng: float}>
      */
-    public function searchMany(string $query, ?float $nearLat = null, ?float $nearLng = null, int $limit = 6, bool $allowBilled = true): array
-    {
-        // Public callers stay on the free provider: a billed API behind an
-        // unauthenticated endpoint is somebody else's budget to burn.
-        $google = $allowBilled ? $this->searchGoogle($query, $nearLat, $nearLng, $limit) : [];
-
-        if ($google !== []) {
-            return $google;
-        }
-
-        return $this->searchOpenStreetMap($query, $nearLat, $nearLng, $limit);
-    }
-
-    /**
-     * Google Places Text Search — one call returns name, address and
-     * coordinates, so there is no follow-up Place Details request.
-     *
-     * @return array<array{name: string, subtitle: string, lat: float, lng: float}>
-     */
-    private function searchGoogle(string $query, ?float $lat, ?float $lng, int $limit): array
-    {
-        $key = config('services.google.maps_key');
-        if (! $key) {
-            return [];
-        }
-
-        $body = [
-            'textQuery' => $query,
-            // Text Search takes a single regionCode string. includedRegionCodes
-            // is an Autocomplete field and makes this a 400 every time.
-            'regionCode' => 'PH',
-            'maxResultCount' => $limit,
-        ];
-
-        if ($lat !== null && $lng !== null) {
-            // 50 km around the driver: a jeepney destination is somewhere
-            // they can actually drive to on this run.
-            $body['locationBias'] = [
-                'circle' => ['center' => ['latitude' => $lat, 'longitude' => $lng], 'radius' => 50000],
-            ];
-        }
-
-        try {
-            $res = Http::withHeaders([
-                'X-Goog-Api-Key' => $key,
-                'X-Goog-FieldMask' => 'places.displayName,places.formattedAddress,places.location',
-            ])->timeout(10)->post('https://places.googleapis.com/v1/places:searchText', $body);
-
-            if (! $res->ok()) {
-                // A disabled Places API answers 403 on every call — log once
-                // per failure and let OpenStreetMap carry the search.
-                Log::warning('Google Places unavailable, falling back to OSM', ['status' => $res->status()]);
-
-                return [];
-            }
-
-            return collect($res->json('places') ?? [])
-                ->map(fn (array $place) => [
-                    'name' => $place['displayName']['text'] ?? '',
-                    'subtitle' => $place['formattedAddress'] ?? '',
-                    'lat' => (float) ($place['location']['latitude'] ?? 0),
-                    'lng' => (float) ($place['location']['longitude'] ?? 0),
-                ])
-                ->filter(fn (array $p) => $p['name'] !== '' && $p['lat'] !== 0.0)
-                ->values()
-                ->all();
-        } catch (\Throwable $e) {
-            Log::warning('Google Places call failed', ['error' => $e->getMessage()]);
-
-            return [];
-        }
-    }
-
-    /** @return array<array{name: string, subtitle: string, lat: float, lng: float}> */
-    private function searchOpenStreetMap(string $query, ?float $nearLat, ?float $nearLng, int $limit): array
+    public function searchMany(string $query, ?float $nearLat = null, ?float $nearLng = null, int $limit = 6): array
     {
         $params = [
             'q' => $query,
