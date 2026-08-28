@@ -33,6 +33,13 @@ class Geocoder
      */
     private const CANDIDATES = 40;
 
+    /**
+     * Below this many results the query is treated as having failed to parse,
+     * and the trailing-token retry runs. Kept low so the common case stays a
+     * single request against a service that asks for one call a second.
+     */
+    private const THIN = 3;
+
     /** @return array{lat: float, lng: float, name: string}|null */
     public function search(string $query): ?array
     {
@@ -65,6 +72,8 @@ class Geocoder
     /**
      * Type-ahead search: several candidates, biased toward the driver so
      * "Poblacion" offers the one beside them before a namesake province away.
+     * Ranking is the caller's job — it is the only side that knows where the
+     * driver is standing.
      *
      * OpenStreetMap only, on purpose. It knows every town, barangay and street
      * in the country and costs nothing, which is the trade Biyahero wants: no
@@ -76,10 +85,50 @@ class Geocoder
      */
     public function searchMany(string $query, ?float $nearLat = null, ?float $nearLng = null, int $limit = 6): array
     {
+        $hits = $this->ask($query, $nearLat, $nearLng);
+
+        // "Siowings apalit" finds nothing. "Siowings" finds it.
+        //
+        // Nominatim reads a free-text query as ONE place, so a business name
+        // with the town appended — which is exactly how people search — matches
+        // neither the business nor the town. Dropping the trailing word and
+        // keeping it as a hint recovers the place, and the hint still lets the
+        // ranker prefer the branch in the town they actually named.
+        $tokens = preg_split('/[\s,\-]+/u', trim($query), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        if (count($hits) < self::THIN && count($tokens) >= 2) {
+            array_pop($tokens);
+            $hits = array_merge($hits, $this->ask(implode(' ', $tokens), $nearLat, $nearLng));
+        }
+
+        return collect($hits)
+            ->unique(fn (array $p) => mb_strtolower($p['name']).'|'.round($p['lat'], 4).'|'.round($p['lng'], 4))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The trailing word of a multi-word query, which is usually the town the
+     * user tacked on. The ranker uses it to break ties; nothing else does.
+     */
+    public function areaHint(string $query): ?string
+    {
+        $tokens = preg_split('/[\s,\-]+/u', trim($query), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return count($tokens) >= 2 ? mb_strtolower(end($tokens)) : null;
+    }
+
+    /**
+     * One Nominatim pass.
+     *
+     * @return array<array{name: string, subtitle: string, lat: float, lng: float, importance: float}>
+     */
+    private function ask(string $query, ?float $nearLat, ?float $nearLng): array
+    {
         $params = [
             'q' => $query,
             'format' => 'json',
-            'limit' => max($limit, self::CANDIDATES),
+            'limit' => self::CANDIDATES,
             'countrycodes' => 'ph',
             'addressdetails' => 1,
         ];
@@ -117,6 +166,9 @@ class Geocoder
                         'subtitle' => implode(', ', array_slice($context, 0, 3)),
                         'lat' => (float) $hit['lat'],
                         'lng' => (float) $hit['lon'],
+                        // Nominatim's own popularity prior. It is what keeps
+                        // the town of Victoria above a shop called Victoria.
+                        'importance' => (float) ($hit['importance'] ?? 0),
                     ];
                 })
                 ->filter(fn (array $place) => $place['name'] !== '')

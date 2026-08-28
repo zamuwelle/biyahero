@@ -170,7 +170,7 @@ class PlaceController extends Controller
             ->get()
             ->filter(fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle))
             ->sortBy(fn (Destination $d) => $located ? $this->roughDistanceKm($lat, $lng, (float) $d->lat, (float) $d->lng) : 0)
-            ->take(4)
+            ->take(3)
             // Same shape as a geocoded row, distance included: a place we
             // seeded is no less likely to be in the wrong province.
             ->map(fn (Destination $d) => [
@@ -204,6 +204,10 @@ class PlaceController extends Controller
         // Nominatim's viewbox is only a hint — it still ranks a namesake in
         // Cebu above the one down the road. Distance from the driver decides
         // here: a jeepney destination is somewhere they can actually drive.
+        // The town they may have tacked on: "Siowings apalit" only returns
+        // anything once "apalit" is dropped, so it comes back here as a hint.
+        $hint = $this->geocoder->areaHint($validated['q']);
+
         $places = collect($found)
             // Drop a geocoded hit only when it IS the known row — same name
             // AND same place. PH names repeat province to province, so a
@@ -212,20 +216,76 @@ class PlaceController extends Controller
                 fn (array $k) => mb_strtolower($k['name']) === mb_strtolower($p['name'])
                     && $this->roughDistanceKm($k['lat'], $k['lng'], $p['lat'], $p['lng']) <= 2
             ))
-            ->sortBy(fn (array $p) => $located ? $this->roughDistanceKm($lat, $lng, $p['lat'], $p['lng']) : 0)
+            ->map(fn (array $p) => [...$p, 'score' => $this->score($p, $needle, $hint, $lat, $lng, $located)])
+            ->sortByDesc('score')
+            // One branch of a chain is a suggestion; five is a list the driver
+            // has to read. Two leaves room for "the one here" and "the other one".
+            ->groupBy(fn (array $p) => mb_strtolower($p['name']))
+            ->flatMap(fn ($branches) => $branches->take(2))
+            ->sortByDesc('score')
+            ->take(5)
             // How far it is, so a driver can see that the Jollibee on offer is
             // in the next province before they commit a whole run to it.
             ->map(fn (array $p) => [
-                ...$p,
+                'name' => $p['name'],
+                'subtitle' => $p['subtitle'],
+                'lat' => $p['lat'],
+                'lng' => $p['lng'],
                 'known' => false,
                 'distance_m' => $located
                     ? (int) round($this->roughDistanceKm($lat, $lng, $p['lat'], $p['lng']) * 1000)
                     : null,
             ])
-            ->take(6)
             ->values();
 
         return response()->json(['data' => $known->concat($places)->all()]);
+    }
+
+    /**
+     * How well one candidate answers what was typed, blended with how far it
+     * is.
+     *
+     * Neither half works alone. Rank purely by string similarity and a driver
+     * in Victoria is offered a namesake two provinces away; rank purely by
+     * distance and typing an exact business name gets them whatever shop
+     * happens to be nearest instead.
+     */
+    private function score(array $place, string $needle, ?string $hint, ?float $lat, ?float $lng, bool $located): float
+    {
+        $haystack = mb_strtolower($place['name'].' '.$place['subtitle']);
+        $tokens = preg_split('/[\s,\-]+/u', $needle, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        // How much of what they typed this row actually accounts for. Token
+        // coverage, not a leading prefix: "coffee" should find "The Coffee Bean".
+        $matched = count(array_filter($tokens, fn (string $t) => str_contains($haystack, $t)));
+        $relevance = $tokens === [] ? 0.0 : $matched / count($tokens);
+
+        // A name that STARTS with the query is what they meant far more often
+        // than one that merely contains it somewhere.
+        if (str_starts_with(mb_strtolower($place['name']), $needle)) {
+            $relevance += 0.3;
+        }
+
+        // The town we had to drop to get any results at all. Honouring it is
+        // the difference between the Apalit branch and a namesake elsewhere.
+        if ($hint !== null && str_contains($haystack, $hint)) {
+            $relevance += 0.4;
+        }
+
+        // Nominatim's own popularity prior, deliberately capped: enough to
+        // keep the town of Victoria above a sari-sari store of the same name,
+        // not enough to beat a real match nearby.
+        $relevance += min(0.3, (float) ($place['importance'] ?? 0));
+
+        if (! $located) {
+            return $relevance;
+        }
+
+        // Halves every 15 km — near enough to matter, gentle enough that an
+        // exact name match still beats a vague one down the road.
+        $proximity = 1 / (1 + $this->roughDistanceKm($lat, $lng, $place['lat'], $place['lng']) / 15);
+
+        return 0.6 * $relevance + 0.4 * $proximity;
     }
 
     /** Cheap ranking distance — exactness does not matter for sort order. */

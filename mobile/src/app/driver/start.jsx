@@ -12,9 +12,28 @@ import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
 import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces } from '@/services/api'
+import { MatchedText } from '@/components/MatchedText'
 import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
+
+/**
+ * Long enough that a fast typist spends one request instead of six on a
+ * geocoder that asks for a call a second, short enough that the list feels
+ * like it is keeping up. Anything near half a second reads as a stall.
+ */
+const TYPEAHEAD_DEBOUNCE_MS = 180
+
+/** Does this row still answer what has been typed so far? */
+const matchesQuery = (place, query) => {
+	const haystack = `${place.name} ${place.subtitle ?? ''}`.toLowerCase()
+
+	return query
+		.toLowerCase()
+		.split(/[\s,\-]+/)
+		.filter(Boolean)
+		.every(token => haystack.includes(token))
+}
 
 /**
  * 16 · Start Biyahe — and, when the store says so, mid-trip rerouting.
@@ -48,6 +67,10 @@ export default function StartTrip() {
 	const [eta, setEta] = useState(null)
 	const [starting, setStarting] = useState(false)
 	const [suggestions, setSuggestions] = useState([])
+	// The last answered query and its results, so the next keystroke can be
+	// answered from memory before the network has said anything.
+	const lastQuery = useRef('')
+	const lastResults = useRef([])
 	const [searching, setSearching] = useState(false)
 	const [searchFailed, setSearchFailed] = useState(false)
 	// A picked place that Biyahero already serves keeps its route preview —
@@ -116,12 +139,26 @@ export default function StartTrip() {
 			return
 		}
 
+		// Narrow what is already on screen while the network catches up. One
+		// more letter should TIGHTEN the list, not blank it for half a second
+		// and start over — that blink is most of what makes a search box feel
+		// broken even when it is working.
+		const previous = lastQuery.current
+
+		if (previous && q.toLowerCase().startsWith(previous.toLowerCase())) {
+			const narrowed = lastResults.current.filter(place => matchesQuery(place, q))
+
+			if (narrowed.length) setSuggestions(narrowed)
+		}
+
 		let cancelled = false
 		setSearching(true)
 		const timer = setTimeout(() => {
 			searchPlaces(q, position)
 				.then(found => {
 					if (cancelled) return
+					lastQuery.current = q
+					lastResults.current = found
 					setSuggestions(found)
 					setSearchFailed(false)
 				})
@@ -133,7 +170,7 @@ export default function StartTrip() {
 					setSearchFailed(true)
 				})
 				.finally(() => !cancelled && setSearching(false))
-		}, 400)
+		}, TYPEAHEAD_DEBOUNCE_MS)
 
 		return () => {
 			cancelled = true
@@ -367,7 +404,7 @@ export default function StartTrip() {
 										color={place.known ? theme.route[1] : theme.icon.secondary}
 									/>
 									<View className="min-w-0 flex-1">
-										<Txt variant="bodyMStrong" numberOfLines={1}>{place.name}</Txt>
+										<MatchedText text={place.name} query={destination} numberOfLines={1} />
 										{!!place.subtitle && (
 											<Txt variant="caption" className="text-fg-secondary" numberOfLines={1}>{place.subtitle}</Txt>
 										)}

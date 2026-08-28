@@ -306,6 +306,91 @@ it('leaves out a distance it cannot compute', function () {
     expect(collect($rows)->firstWhere('name', 'Bacolor')['distance_m'])->toBeNull();
 });
 
+/** Nominatim answers only the bare business name, as it really does. */
+function nominatimKnowsOnly(string $answers, array $rows): void
+{
+    Http::fake(function ($request) use ($answers, $rows) {
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return mb_strtolower($query['q'] ?? '') === $answers
+            ? Http::response($rows)
+            : Http::response([]);
+    });
+}
+
+it('drops the town the driver tacked on when the whole query finds nothing', function () {
+    actingDriver();
+
+    // The real failure: "Siowings apalit" returned nothing at all, because
+    // Nominatim reads free text as ONE place and matched neither half.
+    nominatimKnowsOnly('siowings', [
+        ['name' => 'Siowings', 'lat' => '14.9500', 'lon' => '120.7600', 'importance' => 0.2,
+            'display_name' => 'Siowings, Apalit, Pampanga, Philippines'],
+    ]);
+
+    $rows = $this->getJson('/api/places/search?q=Siowings+apalit&lat='.DRIVER_LAT.'&lng='.DRIVER_LNG)
+        ->assertOk()
+        ->json('data');
+
+    expect(array_column($rows, 'name'))->toContain('Siowings');
+});
+
+it('still prefers the town it had to drop', function () {
+    actingDriver();
+
+    nominatimKnowsOnly('siowings', [
+        // Much nearer, but not the town that was asked for.
+        ['name' => 'Siowings', 'lat' => '15.5000', 'lon' => '120.7000', 'importance' => 0.2,
+            'display_name' => 'Siowings, Concepcion, Tarlac, Philippines'],
+        // Far away, and exactly what was asked for.
+        ['name' => 'Siowings', 'lat' => '14.9500', 'lon' => '120.7600', 'importance' => 0.2,
+            'display_name' => 'Siowings, Apalit, Pampanga, Philippines'],
+    ]);
+
+    $rows = $this->getJson('/api/places/search?q=Siowings+apalit&lat='.DRIVER_LAT.'&lng='.DRIVER_LNG)
+        ->assertOk()
+        ->json('data');
+
+    // Dropping "apalit" is a parsing workaround, not permission to ignore it.
+    expect($rows[0]['subtitle'])->toContain('Apalit');
+});
+
+it('asks once when the first answer was good enough', function () {
+    actingDriver();
+
+    Http::fake(['nominatim.openstreetmap.org/search*' => Http::response([
+        ['name' => 'Bacolor', 'lat' => '14.9989', 'lon' => '120.6503', 'display_name' => 'Bacolor, Pampanga, Philippines'],
+        ['name' => 'Bacolor Church', 'lat' => '14.9979', 'lon' => '120.6513', 'display_name' => 'Bacolor Church, Pampanga, Philippines'],
+        ['name' => 'Bacolor Hall', 'lat' => '14.9969', 'lon' => '120.6523', 'display_name' => 'Bacolor Hall, Pampanga, Philippines'],
+    ])]);
+
+    $this->getJson('/api/places/search?q=bacolor+town&lat='.DRIVER_LAT.'&lng='.DRIVER_LNG)->assertOk();
+
+    // The retry costs a second call against a service that asks for one a
+    // second, so it must stay the exception rather than the rule.
+    Http::assertSentCount(1);
+});
+
+it('offers two branches of a chain, not five', function () {
+    actingDriver();
+
+    Http::fake(['nominatim.openstreetmap.org/search*' => Http::response(
+        collect(range(1, 5))->map(fn (int $i) => [
+            'name' => 'Jollibee',
+            'lat' => (string) (15.40 + $i / 100),
+            'lon' => '120.60',
+            'display_name' => "Jollibee, Branch {$i}, Tarlac, Philippines",
+        ])->all()
+    )]);
+
+    $rows = $this->getJson('/api/places/search?q=jollibee&lat='.DRIVER_LAT.'&lng='.DRIVER_LNG)
+        ->assertOk()
+        ->json('data');
+
+    // A suggestion list is for reducing keystrokes, not for listing a chain.
+    expect(collect($rows)->where('name', 'Jollibee')->count())->toBeLessThanOrEqual(2);
+});
+
 it('rejects a place search that is too short to mean anything', function () {
     actingDriver();
 
