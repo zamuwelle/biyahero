@@ -84,7 +84,9 @@ class Geocoder
 
         $body = [
             'textQuery' => $query,
-            'includedRegionCodes' => ['ph'],
+            // Text Search takes a single regionCode string. includedRegionCodes
+            // is an Autocomplete field and makes this a 400 every time.
+            'regionCode' => 'PH',
             'maxResultCount' => $limit,
         ];
 
