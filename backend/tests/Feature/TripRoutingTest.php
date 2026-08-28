@@ -261,8 +261,49 @@ it('suggests places as the driver types, known destinations first, behind auth',
         ->toBeLessThan(collect($rows)->search(fn (array $r) => $r['name'] === 'Bacong'));
 
     foreach ($rows as $row) {
-        expect($row)->toHaveKeys(['name', 'subtitle', 'lat', 'lng', 'known']);
+        expect($row)->toHaveKeys(['name', 'subtitle', 'lat', 'lng', 'known', 'distance_m']);
     }
+
+    // The distance is what tells a driver the branch on offer is in the next
+    // province, so it has to be real, not a placeholder.
+    $bacong = collect($rows)->firstWhere('name', 'Bacong');
+    $bacolor = collect($rows)->firstWhere('name', 'Bacolor');
+
+    expect($bacolor['distance_m'])->toBeLessThan($bacong['distance_m'])
+        ->and($bacolor['distance_m'])->toBeGreaterThan(0);
+});
+
+it('asks the geocoder for a pool worth ranking, not just a page of it', function () {
+    actingDriver();
+
+    Http::fake(['nominatim.openstreetmap.org/search*' => Http::response([])]);
+
+    $this->getJson('/api/places/search?q=jollibee&lat='.DRIVER_LAT.'&lng='.DRIVER_LNG)->assertOk();
+
+    // Nominatim ranks by its own idea of importance and treats the viewbox as
+    // a hint. A short list came back full of famous far-away branches with the
+    // reachable one missing entirely, so the fix is to ask for enough rows
+    // that our own distance sort has something to work with.
+    Http::assertSent(function ($request) {
+        parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+
+        return (int) ($query['limit'] ?? 0) >= 40;
+    });
+});
+
+it('leaves out a distance it cannot compute', function () {
+    actingDriver();
+
+    Http::fake([
+        'nominatim.openstreetmap.org/search*' => Http::response([
+            ['name' => 'Bacolor', 'lat' => '14.9989', 'lon' => '120.6503', 'display_name' => 'Bacolor, Pampanga, Philippines'],
+        ]),
+    ]);
+
+    // No position sent: a distance printed as 0 m would read as "right here".
+    $rows = $this->getJson('/api/places/search?q=bac')->assertOk()->json('data');
+
+    expect(collect($rows)->firstWhere('name', 'Bacolor')['distance_m'])->toBeNull();
 });
 
 it('rejects a place search that is too short to mean anything', function () {

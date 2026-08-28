@@ -202,6 +202,9 @@ export const searchPlaces = (q, position) =>
 				name: p.name,
 				subtitle: p.subtitle,
 				known: !!p.known,
+				// Null unless the driver's position was sent — a distance we
+				// cannot compute must not be printed as zero.
+				distanceM: p.distance_m ?? null,
 				coords: { latitude: Number(p.lat), longitude: Number(p.lng) }
 			}))
 		)

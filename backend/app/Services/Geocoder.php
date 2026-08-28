@@ -20,6 +20,19 @@ class Geocoder
 
     private const HEADERS = ['User-Agent' => 'biyahero-hackathon/1.0'];
 
+    /**
+     * How many candidates to ask Nominatim for, regardless of how many we
+     * mean to show.
+     *
+     * Nominatim ranks by its own idea of importance and treats the viewbox as
+     * a hint, so a short list comes back full of famous far-away matches: a
+     * driver in Victoria searching "Jollibee" was offered Calasiao, 100 km
+     * north, and "Mercury Drug" got them Lucban, 200 km south — the nearby
+     * branches were simply not in the twelve rows. Asking for a real pool and
+     * ranking it ourselves puts the reachable one first.
+     */
+    private const CANDIDATES = 40;
+
     /** @return array{lat: float, lng: float, name: string}|null */
     public function search(string $query): ?array
     {
@@ -66,7 +79,7 @@ class Geocoder
         $params = [
             'q' => $query,
             'format' => 'json',
-            'limit' => $limit,
+            'limit' => max($limit, self::CANDIDATES),
             'countrycodes' => 'ph',
             'addressdetails' => 1,
         ];

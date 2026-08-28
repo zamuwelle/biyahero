@@ -372,6 +372,14 @@ export default function StartTrip() {
 											<Txt variant="caption" className="text-fg-secondary" numberOfLines={1}>{place.subtitle}</Txt>
 										)}
 									</View>
+									{/* Chain names repeat across the country. The distance is
+									    what tells a driver whether this is the branch down
+									    the road or one two provinces over. */}
+									{place.distanceM != null && (
+										<Txt variant="caption" className="text-fg-secondary">
+											{copy.startTrip.away(place.distanceM)}
+										</Txt>
+									)}
 								</Pressable>
 							))}
 						</View>

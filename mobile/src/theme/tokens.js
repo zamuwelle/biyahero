@@ -26,6 +26,19 @@ export const primitives = {
 
 const p = primitives
 
+/**
+ * Place-pin colours, by category, following Google Maps' own convention: food
+ * orange, health red, outdoors green, arts purple, lodging pink, civic and
+ * religious grey, and blue for the broad run of shops, services, schools and
+ * transit.
+ *
+ * A map of identical grey pins makes the reader tap each one to learn what it
+ * is. Colour answers that before the tap, which is the entire reason Google
+ * paints a restaurant orange and a hospital red.
+ *
+ * Two ramps, because the badge behind the glyph is white by day and near-black
+ * at night: the day set goes muddy on dark, the night set washes out on white.
+ */
 export const day = {
 	surface: { canvas: p.ink[50], default: p.ink[0], raised: p.ink[0], sunken: p.ink[100], inverse: p.ink[900], scrim: p.ink[900] },
 	text: { primary: p.ink[900], secondary: p.ink[500], inverse: p.ink[0], onBrand: p.ink[950], danger: p.red[600], success: p.green[600] },
@@ -40,6 +53,23 @@ export const day = {
 	},
 	action: { dangerBg: p.red[600], dangerFg: p.ink[0] },
 	map: { base: p.ink[100], block: p.ink[50], road: p.ink[0], roadMajor: p.signal[100], water: p.water.day, park: p.park.day },
+	place: {
+		terminal: '#1967D2',
+		school: '#4285F4',
+		store: '#4285F4',
+		mall: '#4285F4',
+		bank: '#4285F4',
+		fuel: '#4285F4',
+		food: '#E8710A',
+		market: '#E8710A',
+		hospital: '#D93025',
+		pharmacy: '#D93025',
+		hotel: '#C2185B',
+		park: '#188038',
+		culture: '#9334E6',
+		worship: '#5F6368',
+		government: '#5F6368'
+	},
 	route: p.route
 }
 
@@ -59,6 +89,23 @@ export const night = {
 	},
 	action: { dangerBg: p.red[500], dangerFg: p.ink[0] },
 	map: { base: p.ink[850], block: p.ink[800], road: p.ink[700], roadMajor: p.ink[600], water: p.water.night, park: p.park.night },
+	place: {
+		terminal: '#AECBFA',
+		school: '#8AB4F8',
+		store: '#8AB4F8',
+		mall: '#8AB4F8',
+		bank: '#8AB4F8',
+		fuel: '#8AB4F8',
+		food: '#FCAD70',
+		market: '#FCAD70',
+		hospital: '#F28B82',
+		pharmacy: '#F28B82',
+		hotel: '#F48FB1',
+		park: '#81C995',
+		culture: '#C58AF9',
+		worship: '#BDC1C6',
+		government: '#BDC1C6'
+	},
 	route: p.route
 }
 

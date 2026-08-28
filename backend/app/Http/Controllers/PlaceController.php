@@ -171,12 +171,17 @@ class PlaceController extends Controller
             ->filter(fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle))
             ->sortBy(fn (Destination $d) => $located ? $this->roughDistanceKm($lat, $lng, (float) $d->lat, (float) $d->lng) : 0)
             ->take(4)
+            // Same shape as a geocoded row, distance included: a place we
+            // seeded is no less likely to be in the wrong province.
             ->map(fn (Destination $d) => [
                 'name' => $d->name,
                 'subtitle' => $d->subtitle ?? '',
                 'lat' => (float) $d->lat,
                 'lng' => (float) $d->lng,
                 'known' => true,
+                'distance_m' => $located
+                    ? (int) round($this->roughDistanceKm($lat, $lng, (float) $d->lat, (float) $d->lng) * 1000)
+                    : null,
             ])
             ->values();
 
@@ -208,7 +213,15 @@ class PlaceController extends Controller
                     && $this->roughDistanceKm($k['lat'], $k['lng'], $p['lat'], $p['lng']) <= 2
             ))
             ->sortBy(fn (array $p) => $located ? $this->roughDistanceKm($lat, $lng, $p['lat'], $p['lng']) : 0)
-            ->map(fn (array $p) => [...$p, 'known' => false])
+            // How far it is, so a driver can see that the Jollibee on offer is
+            // in the next province before they commit a whole run to it.
+            ->map(fn (array $p) => [
+                ...$p,
+                'known' => false,
+                'distance_m' => $located
+                    ? (int) round($this->roughDistanceKm($lat, $lng, $p['lat'], $p['lng']) * 1000)
+                    : null,
+            ])
             ->take(6)
             ->values();
 

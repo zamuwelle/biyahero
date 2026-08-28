@@ -172,6 +172,7 @@ const PLACE_ICONS = {
 	hospital: 'local-hospital',
 	market: 'storefront',
 	mall: 'local-mall',
+	culture: 'theaters',
 	government: 'account-balance',
 	store: 'shopping-bag',
 	park: 'park',
@@ -278,6 +279,7 @@ const PLACE_SETTLE_MS = 150
 const PlacePin = memo(({ place, labelled, mapType }) => {
 	const { theme, scheme } = useTheme()
 	const terminal = place.kind === 'terminal'
+	const tint = theme.place[place.kind] ?? theme.icon.secondary
 	// Dark ink on a pale grid, white on aerial photography — the same swap
 	// Google makes, because neither reads on the other's background.
 	const onImagery = mapType === 'hybrid'
@@ -294,15 +296,13 @@ const PlacePin = memo(({ place, labelled, mapType }) => {
 				alignItems: 'center',
 				justifyContent: 'center',
 				backgroundColor: theme.surface.default,
-				borderColor: terminal ? theme.route[1] : theme.border.subtle,
+				// A terminal wears a full ring in its own colour: it is the one
+				// kind of place this whole app is about.
+				borderColor: terminal ? tint : theme.border.subtle,
 				borderWidth: terminal ? 2 : 1
 			}}
 		>
-			<MaterialIcons
-				name={PLACE_ICONS[place.kind] ?? 'place'}
-				size={labelled ? 15 : 12}
-				color={terminal ? theme.route[1] : theme.icon.secondary}
-			/>
+			<MaterialIcons name={PLACE_ICONS[place.kind] ?? 'place'} size={labelled ? 15 : 12} color={tint} />
 		</View>
 	)
 

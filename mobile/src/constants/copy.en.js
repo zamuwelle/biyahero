@@ -256,6 +256,9 @@ export const startTrip = {
 	start: 'Start the trip',
 	needDestination: 'Pick a destination first.',
 	suggestionsLabel: 'PLACES',
+	// Short on purpose: it sits beside the name and the address in a
+	// narrow row, where 'ang layo sa iyo' would push the name out.
+	away: m => (m < 1000 ? `${m} m` : `${Math.round(m / 1000)} km`),
 	searching: 'Searching…',
 	noPlaces: 'No place found. Try another name or pin it on the map.',
 	searchFailed: 'Search is unreachable. Try again or pin it on the map.',
