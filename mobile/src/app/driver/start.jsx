@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler, Keyboard } from 'react-native'
+import { ActivityIndicator, View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler, Keyboard } from 'react-native'
 import { useRouter } from 'expo-router'
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
-import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces } from '@/services/api'
+import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession } from '@/services/api'
 import { MatchedText } from '@/components/MatchedText'
 import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
@@ -71,6 +71,10 @@ export default function StartTrip() {
 	// answered from memory before the network has said anything.
 	const lastQuery = useRef('')
 	const lastResults = useRef([])
+	// One session covers every keystroke of a search and the pick that ends
+	// it; picking starts a fresh one.
+	const session = useRef(newSearchSession())
+	const [resolving, setResolving] = useState(null)
 	const [searching, setSearching] = useState(false)
 	const [searchFailed, setSearchFailed] = useState(false)
 	// A picked place that Biyahero already serves keeps its route preview —
@@ -154,7 +158,7 @@ export default function StartTrip() {
 		let cancelled = false
 		setSearching(true)
 		const timer = setTimeout(() => {
-			searchPlaces(q, position)
+			searchPlaces(q, position, session.current)
 				.then(found => {
 					if (cancelled) return
 					lastQuery.current = q
@@ -271,11 +275,30 @@ export default function StartTrip() {
 
 	// A picked suggestion carries exact coordinates — the same precision as
 	// dropping a pin, which is what makes the commuter's marker land right.
-	const pickPlace = place => {
+	const pickPlace = async place => {
+		let coords = place.coords
+
+		// A Google prediction has no point until it is chosen. Resolve it with
+		// the same session token, which is what closes the billing session.
+		if (!coords && place.placeId) {
+			setResolving(place.placeId)
+			coords = (await resolvePlace(place.placeId, session.current).catch(() => null))?.coords ?? null
+			setResolving(null)
+
+			if (!coords) {
+				// Without a point there is no route to build. Say so rather
+				// than starting a trip that goes nowhere.
+				showToast(copy.startTrip.resolveFailed)
+
+				return
+			}
+		}
+
+		session.current = newSearchSession()
 		chosenRef.current++
 		chosenTextRef.current = place.name
 		setDestination(place.name)
-		setPinned(place.coords)
+		setPinned(coords)
 		setPickedKnown(place.known)
 		setSelectedRouteId(null)
 		setSuggestions([])
@@ -412,11 +435,13 @@ export default function StartTrip() {
 									{/* Chain names repeat across the country. The distance is
 									    what tells a driver whether this is the branch down
 									    the road or one two provinces over. */}
-									{place.distanceM != null && (
+									{resolving === place.placeId ? (
+										<ActivityIndicator size="small" color={theme.icon.secondary} />
+									) : place.distanceM != null ? (
 										<Txt variant="caption" className="text-fg-secondary">
 											{copy.startTrip.away(place.distanceM)}
 										</Txt>
-									)}
+									) : null}
 								</Pressable>
 							))}
 						</View>

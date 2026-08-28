@@ -6,6 +6,7 @@ use App\Models\Destination;
 use App\Models\Trip;
 use App\Services\CorridorMatcher;
 use App\Services\Geocoder;
+use App\Services\PlaceAutocomplete;
 use App\Services\PoiFinder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,7 +37,29 @@ class PlaceController extends Controller
         protected Geocoder $geocoder,
         protected CorridorMatcher $corridor,
         protected PoiFinder $poi,
+        protected PlaceAutocomplete $autocomplete,
     ) {}
+
+    /**
+     * The point behind a Google prediction the driver picked.
+     *
+     * Predictions carry no coordinates — that is what makes them cheap — so
+     * the one they choose is resolved here, with the same session token, which
+     * is what closes the billing session on Google's side.
+     */
+    public function resolve(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'place_id' => 'required|string|max:400',
+            'session' => 'required|string|max:100',
+        ]);
+
+        $place = $this->autocomplete->resolve($validated['place_id'], $validated['session']);
+
+        // A prediction we cannot turn into a point is not a destination. The
+        // app falls back to asking the driver to pin it on the map.
+        return response()->json(['data' => $place]);
+    }
 
     /**
      * Places inside the map's current viewport, so Biyahero can draw its own
@@ -159,12 +182,16 @@ class PlaceController extends Controller
             'q' => 'required|string|min:2|max:120',
             'lat' => 'nullable|required_with:lng|numeric|between:-90,90',
             'lng' => 'nullable|required_with:lat|numeric|between:-180,180',
+            // Groups the keystrokes of one search with the pick that ends it,
+            // so Google bills the pair once instead of every letter typed.
+            'session' => 'nullable|string|max:100',
         ]);
 
         $needle = mb_strtolower(trim($validated['q']));
         $lat = isset($validated['lat']) ? (float) $validated['lat'] : null;
         $lng = isset($validated['lng']) ? (float) $validated['lng'] : null;
         $located = $lat !== null && $lng !== null;
+        $session = $validated['session'] ?? null;
 
         $known = Destination::query()
             ->get()
@@ -184,6 +211,35 @@ class PlaceController extends Controller
                     : null,
             ])
             ->values();
+
+        // Google first when it is configured: it is the only source that has
+        // the small businesses a driver names, and the reason it is here. Its
+        // own ranking is left alone — re-sorting predictions by distance would
+        // throw away exactly what we are paying for.
+        if ($session !== null && $this->autocomplete->configured()) {
+            $predicted = $this->autocomplete->suggest($validated['q'], $lat, $lng, $session);
+
+            if ($predicted !== []) {
+                $rows = collect($predicted)
+                    ->reject(fn (array $p) => $known->contains(
+                        fn (array $k) => mb_strtolower($k['name']) === mb_strtolower($p['name'])
+                    ))
+                    ->take(5)
+                    ->map(fn (array $p) => [
+                        'name' => $p['name'],
+                        'subtitle' => $p['subtitle'],
+                        // Resolved on selection, not here.
+                        'lat' => null,
+                        'lng' => null,
+                        'place_id' => $p['place_id'],
+                        'known' => false,
+                        'distance_m' => $p['distance_m'],
+                    ])
+                    ->values();
+
+                return response()->json(['data' => $known->concat($rows)->all()]);
+            }
+        }
 
         // Nominatim asks for at most one call per second, and drivers type
         // fast — cache each (query, rough area) briefly.

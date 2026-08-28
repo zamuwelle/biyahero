@@ -39,4 +39,15 @@ return [
         'url' => env('AI_SERVICE_URL', 'http://127.0.0.1:8000'),
     ],
 
+    /*
+     * Google Places, for the DRIVER's destination box only. It is the one
+     * thing OpenStreetMap cannot do: an exhaustive country-wide search for
+     * "Siowings" found three, and none were the branches a driver can name.
+     * Without a key the app falls back to OpenStreetMap everywhere and stays
+     * fully usable — it just stops knowing small businesses.
+     */
+    'google' => [
+        'places_key' => env('GOOGLE_PLACES_API_KEY'),
+    ],
+
 ];

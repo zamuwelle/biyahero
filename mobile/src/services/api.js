@@ -192,10 +192,26 @@ export const logoutDriver = () => client.post('/logout').catch(() => {})
 export const fetchCurrentTrip = () => client.get('/trips/current').then(res => res.data?.data)
 
 /** Type-ahead for the driver's destination field. Driver-side only. */
-export const searchPlaces = (q, position) =>
+/**
+ * One autocomplete session: every keystroke of a search, plus the pick that
+ * ends it. Google bills the pair once instead of billing each letter, and it
+ * is also what lets it learn which prefix led to which choice.
+ */
+export const newSearchSession = () =>
+	'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+		const r = (Math.random() * 16) | 0
+
+		return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+	})
+
+export const searchPlaces = (q, position, session) =>
 	client
 		.get('/places/search', {
-			params: { q, ...(position ? { lat: position.latitude, lng: position.longitude } : {}) }
+			params: {
+				q,
+				...(position ? { lat: position.latitude, lng: position.longitude } : {}),
+				...(session ? { session } : {})
+			}
 		})
 		.then(res =>
 			(res.data?.data ?? []).map(p => ({
@@ -205,9 +221,23 @@ export const searchPlaces = (q, position) =>
 				// Null unless the driver's position was sent — a distance we
 				// cannot compute must not be printed as zero.
 				distanceM: p.distance_m ?? null,
-				coords: { latitude: Number(p.lat), longitude: Number(p.lng) }
+				// A Google prediction arrives without a point, on purpose: that
+				// is what makes predictions cheap. resolvePlace turns the one
+				// they pick into coordinates.
+				placeId: p.place_id ?? null,
+				coords: p.lat != null ? { latitude: Number(p.lat), longitude: Number(p.lng) } : null
 			}))
 		)
+
+/** The point behind a prediction, fetched once the driver has chosen it. */
+export const resolvePlace = (placeId, session) =>
+	client
+		.get('/places/resolve', { params: { place_id: placeId, session } })
+		.then(res => {
+			const p = res.data?.data
+
+			return p ? { name: p.name, subtitle: p.subtitle, coords: { latitude: Number(p.lat), longitude: Number(p.lng) } } : null
+		})
 
 /** The driver's own last few routes — one tap to run the same line again. */
 export const fetchRecentRoutes = () =>

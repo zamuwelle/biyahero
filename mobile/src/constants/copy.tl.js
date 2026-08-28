@@ -310,6 +310,7 @@ export const startTrip = {
 	start: 'Simulan ang biyahe',
 	needDestination: 'Pumili muna ng destinasyon.',
 	suggestionsLabel: 'MGA LUGAR',
+	resolveFailed: 'Hindi makuha ang eksaktong lugar. Subukang ituro sa mapa.',
 	// Short on purpose: it sits beside the name and the address in a
 	// narrow row, where 'ang layo sa iyo' would push the name out.
 	away: m => (m < 1000 ? `${m} m` : `${Math.round(m / 1000)} km`),

@@ -116,6 +116,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/trips/{trip}/capacity', [TripController::class, 'updateCapacity']);
 
     Route::get('/places/search', [PlaceController::class, 'search']);
+    // Behind auth with the search itself: a billed lookup on a public route is
+    // somebody else's budget to burn.
+    Route::get('/places/resolve', [PlaceController::class, 'resolve'])->middleware('throttle:60,1');
     Route::get('/routes/recent', [TripController::class, 'recentRoutes']);
 
     // Driver-facing: which routes pass near where I am standing? Lives behind
