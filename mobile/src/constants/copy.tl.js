@@ -37,7 +37,7 @@ export const roleSelect = {
 	commuter: {
 		title: 'Sakay ako',
 		badge: 'WALANG ACCOUNT',
-		body: 'Tingnan agad ang mga aktibong sasakyan. Walang sign-up, walang password, at hindi hinihingi ang lokasyon mo.'
+		body: 'Tingnan agad ang mga aktibong sasakyan. Walang sign-up at walang password. Opsyonal ang lokasyon mo — hindi ito ipinapadala sa server.'
 	},
 	driver: {
 		title: 'Driver ako',
@@ -60,7 +60,7 @@ export const settings = {
 	location: 'Lokasyon',
 	locationOn: 'Pinapayagan habang ginagamit',
 	locationOff: 'Hindi pinapayagan — buksan ang settings ng system',
-	locationNotAsked: 'Hindi pa hinihingi — sa mga drayber lang ito kailangan',
+	locationNotAsked: 'Hindi pa hinihingi — opsyonal, para lang makita ang lokasyon mo sa mapa',
 	clearSearches: 'Burahin ang mga hinanap',
 	clearSearchesHint: 'Naka-save lang sa device na ito',
 	searchesCleared: 'Nabura ang mga hinanap',
@@ -74,6 +74,7 @@ export const mapHome = {
 	updateNote: 'Nag-a-update kada 8 segundo · walang location permission',
 	updateNoteLocated: 'Nag-a-update kada 8 segundo · ipinapakita ang lokasyon mo',
 	myLocation: 'Ipakita ang lokasyon ko',
+	locationServicesOff: 'Naka-off ang Location (GPS) ng telepono mo. Buksan ito para makita ang lokasyon mo.',
 	layers: 'Anyo ng mapa',
 	layerNames: { standard: 'Karaniwan', hybrid: 'Satellite', terrain: 'Terrain' },
 	myLocationOn: 'Ipinapakita na ang lokasyon mo',
@@ -93,7 +94,7 @@ export const search = {
 	recent: 'MGA HULING HINANAP',
 	places: 'MGA LUGAR',
 	popular: 'MGA SIKAT NA DESTINASYON',
-	privacy: 'Naka-save sa device mo lang. Walang account at hindi hinihingi ang lokasyon mo.',
+	privacy: 'Naka-save sa device mo lang. Walang account, at hindi umaalis sa telepono mo ang lokasyon mo.',
 	activeCount: n => `${n} sasakyan aktibo ngayon`,
 	/** Corridor match, not a route lookup — 400 m either side of the destination. */
 	resultsTitle: (n, dest) => `${n} sasakyan dumadaan sa ${dest}`,
@@ -103,6 +104,10 @@ export const search = {
 	searchAnywhere: q => `Hanapin ang "${q}"`,
 	searchAnywhereHint: 'Kahit saang lugar — ipapakita ang mga sasakyang dumadaan doon',
 	/** No destination typed — nothing is being filtered, there is simply nobody out. */
+	offlineTitle: 'Walang koneksyon',
+	offlineBody: 'Hindi maabot ang Biyahero. Susubukan ulit kada 8 segundo.',
+	unknownPlaceTitle: dest => `Hindi mahanap ang "${dest}"`,
+	unknownPlaceBody: 'Subukan ang ibang pangalan, o pumili mula sa listahan.',
 	noneActiveTitle: 'Walang aktibong sasakyan ngayon',
 	noneActiveBody: 'Walang drayber na nagbo-broadcast sa ngayon. Subukan ulit maya-maya.',
 	clear: 'I-clear'
@@ -123,6 +128,9 @@ export const vehicle = {
 	away: m => (m < 1000 ? `${m} m ang layo sa iyo` : `${(m / 1000).toFixed(1)} km ang layo sa iyo`),
 	nearest: 'Pinakamalapit sa iyo',
 	passesWithin: (m, dest) => `Dumadaan ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} mula sa ${dest}`,
+	tripEndedTitle: 'Tapos na ang biyaheng ito',
+	tripEndedBody: 'Tinapos ng drayber ang biyahe, kaya wala na siya sa mapa. Bumalik para makita ang ibang sasakyan.',
+	unverifiedDriver: taon => `Drayber · ${taon} taon sa Biyahero`,
 	staleTitle: 'Huling alam na posisyon',
 	staleBody: 'Walang live na GPS. Ipinapakita ang oras kung kailan huling nakita.'
 }
@@ -180,6 +188,8 @@ export const vehicleDetails = {
 	platePlaceholder: 'NCR 8842',
 	modelLabel: 'MODELO',
 	modelPlaceholder: 'Sarao 2018',
+	bodyLabel: 'BODY NO.',
+	bodyPlaceholder: '214',
 	plateNote: 'Pampubliko ang plaka — nakapinta na ito sa sasakyan.',
 	continue: 'Magpatuloy',
 	invalidPlate: 'Kailangan ang plaka ng sasakyan.',
@@ -320,6 +330,7 @@ export const startTrip = {
 
 export const activeTrip = {
 	liveBanner: 'LIVE — nakikita ka ng mga pasahero',
+	notLiveBanner: 'Hindi nagba-broadcast — hindi ka nakikita ng mga pasahero',
 	heading: dest => `Papuntang ${dest}`,
 	elapsed: (mins, km) => `${mins} min na · ${km} km ang nabiyahe`,
 	change: 'Palitan',

@@ -143,7 +143,10 @@ export default function VerificationPending() {
 
 				<View className="gap-3">
 					{approved && <Button label={copy.driverHome.startTrip} onPress={() => router.replace('/driver')} />}
-					{rejected && <Button label={copy.licence.submit} onPress={() => router.replace('/driver/vehicle')} />}
+					{/* Re-registering cannot work — the licence is already on file and
+					    always 409s — so the only honest action is to keep using the app
+					    as a passenger while a human reviews the revocation. */}
+					{rejected && <Button label={copy.pending.useAsCommuter} onPress={useAsCommuter} />}
 					{!approved && !rejected && (
 						<Button label={copy.pending.refresh} tone="secondary" icon="refresh" onPress={refreshMe} loading={checking} />
 					)}

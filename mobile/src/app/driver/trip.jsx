@@ -29,6 +29,7 @@ export default function ActiveTrip() {
 	const setCapacity = useStore(s => s.setCapacity)
 	const endTrip = useStore(s => s.endTrip)
 	const beginReroute = useStore(s => s.beginReroute)
+	const isBroadcasting = useStore(s => s.isBroadcasting)
 	const broadcastPosition = useStore(s => s.broadcastPosition)
 
 	const [elapsed, setElapsed] = useState(0)
@@ -81,10 +82,21 @@ export default function ActiveTrip() {
 
 			<View
 				style={{ top: insets.top + 6, ...elevation.float }}
-				className="absolute self-center flex-row items-center gap-2 rounded-full border-[1.5px] border-capacity-open-fg bg-surface px-4 py-2"
+				// The banner is a factual claim about the watcher, not about the
+				// trip row: if broadcasting stopped, commuters cannot see them.
+				className={`absolute self-center flex-row items-center gap-2 rounded-full border-[1.5px] bg-surface px-4 py-2 ${
+					isBroadcasting ? 'border-capacity-open-fg' : 'border-capacity-stale-fg'
+				}`}
 			>
-				<View className="h-[9px] w-[9px] rounded-full bg-capacity-open-fg" />
-				<Txt variant="bodyMStrong" className="text-capacity-open-fg">{copy.activeTrip.liveBanner}</Txt>
+				<View
+					className={`h-[9px] w-[9px] rounded-full ${isBroadcasting ? 'bg-capacity-open-fg' : 'bg-capacity-stale-fg'}`}
+				/>
+				<Txt
+					variant="bodyMStrong"
+					className={isBroadcasting ? 'text-capacity-open-fg' : 'text-capacity-stale-fg'}
+				>
+					{isBroadcasting ? copy.activeTrip.liveBanner : copy.activeTrip.notLiveBanner}
+				</Txt>
 			</View>
 
 			<Sheet peekHeight={390}>

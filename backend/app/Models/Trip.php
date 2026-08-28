@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * One driver's declared run. The route lives here rather than on the vehicle,
@@ -47,13 +48,32 @@ class Trip extends Model
             return $label;
         }
 
-        $start = $waypoints[0];
-        $end = $waypoints[count($waypoints) - 1];
+        // How far ALONG the polyline each point sits. Comparing to the two
+        // endpoints instead mislabels any destination in the middle of the
+        // corridor, which is most of them.
+        $along = function (array $point) use ($waypoints): int {
+            $best = 0;
+            $bestDistance = INF;
 
-        $away = fn (array $point) => ($point['lat'] - $target['lat']) ** 2 + ($point['lng'] - $target['lng']) ** 2;
+            foreach ($waypoints as $index => $waypoint) {
+                $distance = ($waypoint['lat'] - $point['lat']) ** 2 + ($waypoint['lng'] - $point['lng']) ** 2;
+                if ($distance < $bestDistance) {
+                    $bestDistance = $distance;
+                    $best = $index;
+                }
+            }
 
-        // Heading back toward the route's starting end: read it that way.
-        return $away($start) < $away($end)
+            return $best;
+        };
+
+        $vehicle = $this->vehicle;
+        $from = $vehicle?->live_lat !== null && $vehicle?->live_lng !== null
+            ? ['lat' => (float) $vehicle->live_lat, 'lng' => (float) $vehicle->live_lng]
+            : $waypoints[0];
+
+        // Destination behind the vehicle along the stored direction means this
+        // run is the return leg, so the label reads the other way.
+        return $along($target) < $along($from)
             ? $parts[1].' → '.$parts[0]
             : $label;
     }
@@ -70,11 +90,22 @@ class Trip extends Model
             return ['lat' => (float) $this->dest_lat, 'lng' => (float) $this->dest_lng];
         }
 
-        $place = Destination::query()
-            ->get()
-            ->first(fn (Destination $d) => mb_strtolower($d->name) === mb_strtolower((string) $this->destination));
+        // Memoised per request: this ran a full destinations SELECT for every
+        // vehicle in a poll.
+        $byName = Cache::memo()->remember(
+            'destinations.by-name',
+            300,
+            fn () => Destination::query()
+                ->get(['name', 'lat', 'lng'])
+                ->mapWithKeys(fn (Destination $d) => [
+                    mb_strtolower($d->name) => ['lat' => (float) $d->lat, 'lng' => (float) $d->lng],
+                ])
+                ->all()
+        );
 
-        return $place ? ['lat' => (float) $place->lat, 'lng' => (float) $place->lng] : null;
+        $place = $byName[mb_strtolower((string) $this->destination)] ?? null;
+
+        return $place;
     }
 
     public function vehicle()

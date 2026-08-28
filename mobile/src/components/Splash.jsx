@@ -4,16 +4,21 @@ import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Txt } from '@/components/ui/Txt'
 import { LogoMark } from '@/components/LogoMark'
-import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
 
 /**
  * 01 · Splash. Full Signal Yellow — the one screen that is all brand.
  * Shown while fonts load and the stored role/session is restored.
+ *
+ * The yellow does not flip with the theme, so neither may the ink on it:
+ * theme-driven text tokens rendered white-on-yellow in dark mode.
  */
+/** Fixed ink for the fixed yellow ground, in either theme. */
+const INK = '#0B1220'
+const INK_MUTED = '#3A4757'
+
 export const Splash = () => {
 	const copy = useCopy()
-	const { theme } = useTheme()
 	const progress = useRef(new Animated.Value(0)).current
 
 	useEffect(() => {
@@ -29,12 +34,12 @@ export const Splash = () => {
 			<StatusBar style="dark" />
 			<View className="flex-1 items-center justify-center px-8">
 				<LogoMark size={104} />
-				<Txt variant="displayS" className="mt-8 text-fg">{copy.app.name}</Txt>
-				<Txt variant="bodyM" className="mt-4 text-center text-fg-secondary">{copy.app.tagline}</Txt>
+				<Txt variant="displayS" className="mt-8" style={{ color: INK }}>{copy.app.name}</Txt>
+				<Txt variant="bodyM" className="mt-4 text-center" style={{ color: INK_MUTED }}>{copy.app.tagline}</Txt>
 			</View>
 			<View className="mb-16 items-center">
-				<View className="h-1 w-16 overflow-hidden rounded-full" style={{ backgroundColor: `${theme.text.primary}26` }}>
-					<Animated.View className="h-1 w-[26px] rounded-full bg-fg" style={{ transform: [{ translateX }] }} />
+				<View className="h-1 w-16 overflow-hidden rounded-full" style={{ backgroundColor: `${INK}26` }}>
+					<Animated.View className="h-1 w-[26px] rounded-full" style={{ backgroundColor: INK, transform: [{ translateX }] }} />
 				</View>
 			</View>
 		</SafeAreaView>

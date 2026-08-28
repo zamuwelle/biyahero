@@ -22,6 +22,14 @@ class ActiveVehicleController extends Controller
     /** Mirrors the resource: past this, a ping no longer counts as live. */
     private const STALE_AFTER_SECONDS = ActiveVehicleResource::STALE_AFTER_SECONDS;
 
+    /** Never pinged counts as stale, exactly as the card renders it. */
+    private static function isStale(Trip $trip): bool
+    {
+        $seconds = $trip->vehicle->last_ping_at?->diffInSeconds(now());
+
+        return $seconds === null || $seconds > self::STALE_AFTER_SECONDS;
+    }
+
     public function __construct(
         protected CorridorMatcher $corridor,
         protected Geocoder $geocoder,
@@ -98,8 +106,10 @@ class ActiveVehicleController extends Controller
             // of rides someone is about to run for.
             $results = $results
                 ->sortBy([
-                    fn (Trip $a, Trip $b) => ($a->vehicle->last_ping_at?->diffInSeconds(now()) > self::STALE_AFTER_SECONDS)
-                        <=> ($b->vehicle->last_ping_at?->diffInSeconds(now()) > self::STALE_AFTER_SECONDS),
+                    // A vehicle nobody has ever heard from is the MOST stale,
+                    // not the freshest — `null > 120` is false, which quietly
+                    // promoted it above genuinely live rides.
+                    fn (Trip $a, Trip $b) => self::isStale($a) <=> self::isStale($b),
                     fn (Trip $a, Trip $b) => $a->passes_within_m <=> $b->passes_within_m,
                     fn (Trip $a, Trip $b) => ($b->vehicle->last_ping_at?->timestamp ?? 0) <=> ($a->vehicle->last_ping_at?->timestamp ?? 0),
                 ])

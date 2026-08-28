@@ -125,8 +125,8 @@ export default function VehicleDetails() {
 					/>
 
 					<Field
-						label="BODY NO."
-						placeholder="214"
+						label={copy.vehicleDetails.bodyLabel}
+						placeholder={copy.vehicleDetails.bodyPlaceholder}
 						value={body_number}
 						onChangeText={value => update({ body_number: value })}
 						mono

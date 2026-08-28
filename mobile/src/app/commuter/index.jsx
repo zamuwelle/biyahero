@@ -36,6 +36,8 @@ export default function MapHome() {
 	const corridorRadiusM = useStore(s => s.corridorRadiusM)
 	const searchedPosition = useStore(s => s.destinationPosition)
 	const vehiclesFor = useStore(s => s.vehiclesFor)
+	const error = useStore(s => s.error)
+	const destinationResolved = useStore(s => s.destinationResolved)
 	const selectedVehicleId = useStore(s => s.selectedVehicleId)
 	const setVehicleFilter = useStore(s => s.setVehicleFilter)
 	const clearDestination = useStore(s => s.clearDestination)
@@ -239,9 +241,29 @@ export default function MapHome() {
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-[10px] pb-8">
 					{vehicles.length === 0 ? (
 						<EmptyState
-							icon={destination ? 'search-off' : 'directions-bus'}
-							title={destination ? copy.search.emptyTitle(destination.name) : copy.search.noneActiveTitle}
-							body={destination ? copy.search.emptyBody : copy.search.noneActiveBody}
+							// Three different silences, and only one of them is "nobody is
+							// driving": the request may have failed, or the place may not
+							// exist. Saying the wrong one sends the user hunting for a
+							// jeepney that was never the problem.
+							icon={error ? 'wifi-off' : destination ? 'search-off' : 'directions-bus'}
+							title={
+								error
+									? copy.search.offlineTitle
+									: destination && !destinationResolved
+										? copy.search.unknownPlaceTitle(destination.name)
+										: destination
+											? copy.search.emptyTitle(destination.name)
+											: copy.search.noneActiveTitle
+							}
+							body={
+								error
+									? copy.search.offlineBody
+									: destination && !destinationResolved
+										? copy.search.unknownPlaceBody
+										: destination
+											? copy.search.emptyBody
+											: copy.search.noneActiveBody
+							}
 						/>
 					) : (
 						listVehicles.map((v, i) => (

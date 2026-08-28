@@ -37,7 +37,7 @@ export const roleSelect = {
 	commuter: {
 		title: "I'm riding",
 		badge: 'NO ACCOUNT',
-		body: 'See active vehicles right away. No sign-up, no password, and your location is never requested.'
+		body: 'See active vehicles right away. No sign-up and no password. Your location is optional and never leaves your phone.'
 	},
 	driver: {
 		title: "I'm driving",
@@ -60,7 +60,7 @@ export const settings = {
 	location: 'Location',
 	locationOn: 'Allowed while in use',
 	locationOff: 'Not allowed — open system settings',
-	locationNotAsked: 'Never requested — only drivers need it',
+	locationNotAsked: 'Not requested yet — optional, only to show you on the map',
 	clearSearches: 'Clear recent searches',
 	clearSearchesHint: 'Saved on this device only',
 	searchesCleared: 'Searches cleared',
@@ -73,6 +73,7 @@ export const mapHome = {
 	updateNote: 'Updates every 8 seconds · no location permission',
 	updateNoteLocated: 'Updates every 8 seconds · showing your location',
 	myLocation: 'Show my location',
+	locationServicesOff: "Your phone's Location (GPS) is off. Turn it on to see where you are.",
 	layers: 'Map type',
 	layerNames: { standard: 'Default', hybrid: 'Satellite', terrain: 'Terrain' },
 	myLocationOn: 'Now showing your location',
@@ -92,7 +93,7 @@ export const search = {
 	recent: 'RECENT SEARCHES',
 	places: 'PLACES',
 	popular: 'POPULAR DESTINATIONS',
-	privacy: 'Saved on your device only. No account, and your location is never requested.',
+	privacy: 'Saved on your device only. No account, and your location never leaves your phone.',
 	activeCount: n => `${n} vehicle${n === 1 ? '' : 's'} active now`,
 	resultsTitle: (n, dest) => `${n} vehicle${n === 1 ? '' : 's'} passing ${dest}`,
 	resultsSubtitle: (dest, radius) => `Routes passing within ${radius} of ${dest}`,
@@ -100,6 +101,10 @@ export const search = {
 	emptyBody: 'No driver is passing there right now. This is common after 9 PM.',
 	searchAnywhere: q => `Search for "${q}"`,
 	searchAnywhereHint: 'Anywhere on the map — shows the rides that run past it',
+	offlineTitle: 'No connection',
+	offlineBody: 'Biyahero is unreachable. Retrying every 8 seconds.',
+	unknownPlaceTitle: dest => `Could not find "${dest}"`,
+	unknownPlaceBody: 'Try another name, or pick one from the list.',
 	noneActiveTitle: 'No vehicles active right now',
 	noneActiveBody: 'No driver is broadcasting at the moment. Try again shortly.',
 	clear: 'Clear'
@@ -118,6 +123,9 @@ export const vehicle = {
 	away: m => (m < 1000 ? `${m} m away from you` : `${(m / 1000).toFixed(1)} km away from you`),
 	nearest: 'Closest to you',
 	passesWithin: (m, dest) => `Passes ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} from ${dest}`,
+	tripEndedTitle: 'This trip has ended',
+	tripEndedBody: 'The driver finished the run, so they are off the map. Go back to see other vehicles.',
+	unverifiedDriver: years => `Driver · ${years} year${years === 1 ? '' : 's'} on Biyahero`,
 	staleTitle: 'Last known position',
 	staleBody: 'No live GPS. Showing when this vehicle was last seen.'
 }
@@ -166,6 +174,8 @@ export const vehicleDetails = {
 	platePlaceholder: 'NCR 8842',
 	modelLabel: 'MODEL',
 	modelPlaceholder: 'Sarao 2018',
+	bodyLabel: 'BODY NO.',
+	bodyPlaceholder: '214',
 	plateNote: 'The plate is public — it is painted on the vehicle.',
 	continue: 'Continue',
 	invalidPlate: 'The vehicle plate is required.',
@@ -266,6 +276,7 @@ export const startTrip = {
 
 export const activeTrip = {
 	liveBanner: 'LIVE — passengers can see you',
+	notLiveBanner: 'Not broadcasting — passengers cannot see you',
 	heading: dest => `Bound for ${dest}`,
 	elapsed: (mins, km) => `${mins} min in · ${km} km travelled`,
 	change: 'Change',

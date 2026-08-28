@@ -64,8 +64,9 @@ export default function VehicleDetail() {
 				// Map Home's poll is stopped while this screen has focus, so the
 				// proximity buzz runs off this screen's own refresh instead.
 				.then(data => !cancelled && (setVehicle(data), setMissing(false), checkProximity([data])))
-				// A 404 here means the driver ended the trip while this was open.
-				.catch(() => !cancelled && setMissing(true))
+				// A 404 means the driver ended the trip. Anything else is a network
+				// problem, and reporting that as "the ride is gone" would be a lie.
+				.catch(e => !cancelled && e?.response?.status === 404 && setMissing(true))
 				.finally(() => !cancelled && setLoading(false))
 
 		load()
@@ -105,8 +106,8 @@ export default function VehicleDetail() {
 			<View className="flex-1 justify-center bg-surface-canvas px-6">
 				<EmptyState
 					icon="directions-off"
-					title={copy.search.emptyTitle('')}
-					body={copy.search.emptyBody}
+					title={copy.vehicle.tripEndedTitle}
+					body={copy.vehicle.tripEndedBody}
 					action={
 						<Pressable onPress={() => router.back()} className="mt-2 rounded-lg bg-brand px-6 py-3 active:opacity-80">
 							<Txt variant="bodyMStrong" className="text-fg-on-brand">{copy.common.back}</Txt>
@@ -212,7 +213,11 @@ export default function VehicleDetail() {
 							<DetailRow
 								tint={theme.surface.sunken}
 								title={vehicle.driver_name}
-								subtitle={copy.vehicle.verifiedDriver(vehicle.driver_years)}
+								subtitle={
+									vehicle.is_verified
+										? copy.vehicle.verifiedDriver(vehicle.driver_years)
+										: copy.vehicle.unverifiedDriver(vehicle.driver_years)
+								}
 							>
 								<Txt variant="bodyMStrong" className="text-fg-secondary">
 									{vehicle.driver_name.charAt(0)}

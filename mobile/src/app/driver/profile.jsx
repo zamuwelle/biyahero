@@ -20,7 +20,7 @@ import { useCopy } from '@/constants/copy'
  */
 export default function DriverProfile() {
 	const copy = useCopy()
-	const { theme } = useTheme()
+	const { theme, statusBar } = useTheme()
 	const router = useRouter()
 	const driver = useStore(s => s.driver)
 	const beginEdit = useRegistration(s => s.beginEdit)
@@ -35,7 +35,7 @@ export default function DriverProfile() {
 
 	return (
 		<SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-surface-canvas">
-			<StatusBar style="dark" />
+			<StatusBar style={statusBar} />
 			<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8">
 				<View className="items-center gap-3 bg-brand-subtle px-6 pb-8 pt-4">
 					<View className="w-full flex-row justify-start">

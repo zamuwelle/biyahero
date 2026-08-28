@@ -14,21 +14,38 @@ let pollTimer = null
 let broadcastWatcher = null
 let broadcastGuard = null
 let myLocationWatcher = null
-let lastNearId = null
+// Vehicles already announced, so two jeepneys in range do not buzz forever.
+let alertedIds = new Set()
 let toastTimer = null
 let lastStreetLookup = 0
+// Only the newest /active-vehicles reply may write to the store.
+let refreshSeq = 0
 
 /**
  * The broadcast watcher itself: streams the driver's fix to the server every
  * ping interval and mirrors it into the store for the driver's own map.
  */
-const startBroadcastWatcher = (tripId, get, set) =>
-	Location.watchPositionAsync(
+const startBroadcastWatcher = (tripId, get, set) => {
+	// Distance is accumulated here because only this watcher sees every fix.
+	// It was never sent at all, so every kilometre figure a real driver saw —
+	// this trip, today's total, their history, their profile — was 0.
+	let travelledKm = get().trip?.distance_km ?? 0
+	let lastFix = null
+
+	return Location.watchPositionAsync(
 		{ accuracy: Location.Accuracy.High, timeInterval: PING_INTERVAL_MS, distanceInterval: 20 },
 		async loc => {
 			if (!loc?.coords) return
 			const { latitude, longitude } = loc.coords
-			set({ broadcastPosition: { latitude, longitude } })
+			const here = { latitude, longitude }
+
+			// GPS jitter while parked would otherwise inflate the total, so a
+			// hop under 15 m does not count as distance travelled.
+			const hop = distanceM(lastFix, here)
+			if (hop !== null && hop >= 15) travelledKm += hop / 1000
+			lastFix = here
+
+			set({ broadcastPosition: here, trip: { ...get().trip, distance_km: Number(travelledKm.toFixed(2)) } })
 
 			let street
 			if (Date.now() - lastStreetLookup > STREET_LOOKUP_INTERVAL_MS) {
@@ -47,9 +64,10 @@ const startBroadcastWatcher = (tripId, get, set) =>
 				}
 			}
 
-			api.pingTrip(tripId, { latitude, longitude, street }).catch(() => {})
+			api.pingTrip(tripId, { latitude, longitude, street, distanceKm: Number(travelledKm.toFixed(2)) }).catch(() => {})
 		}
 	)
+}
 
 /**
  * One GPS fix, cached-first. High accuracy, never Balanced — the network
@@ -109,29 +127,9 @@ export const useStore = create((set, get) => ({
 				const cached = await AsyncStorage.getItem(KEYS.driver).catch(() => null)
 				if (cached) set({ driver: JSON.parse(cached) })
 
-				try {
-					const driver = await api.fetchMe()
-					set({ driver })
-					await AsyncStorage.setItem(KEYS.driver, JSON.stringify(driver))
-					const trip = await api.fetchCurrentTrip().catch(() => null)
-					if (trip) {
-						set({ trip, isBroadcasting: true })
-						// The process died mid-trip: without restarting the watcher
-						// the LIVE banner would lie — no pings, no dot, no watchdog.
-						get()
-							.beginBroadcast(trip.id)
-							.catch(() => set({ isBroadcasting: false }))
-					}
-				} catch (e) {
-					// Only a REJECTED token ends the session. A network failure must
-					// not log the driver out — that turns every dead spot into a
-					// forced re-registration.
-					if (e?.response?.status === 401) {
-						await AsyncStorage.multiRemove([KEYS.token, KEYS.driver])
-						api.setAuthToken(null)
-						set({ driver: null })
-					}
-				}
+				// NOT awaited: the splash used to sit through two round-trips, which
+				// on a weak signal meant twenty seconds staring at nothing.
+				get().resumeSession()
 			}
 
 			set({
@@ -141,6 +139,36 @@ export const useStore = create((set, get) => ({
 			})
 		} catch {
 			set({ hydrated: true })
+		}
+	},
+
+	/**
+	 * Refresh the driver session in the background, and pick a run back up
+	 * if the process died mid-trip.
+	 */
+	resumeSession: async () => {
+		try {
+			const driver = await api.fetchMe()
+			set({ driver })
+			await AsyncStorage.setItem(KEYS.driver, JSON.stringify(driver))
+
+			const trip = await api.fetchCurrentTrip().catch(() => null)
+			if (trip) {
+				set({ trip, isBroadcasting: true })
+				// Without restarting the watcher the LIVE banner would lie:
+				// no pings, no dot, no watchdog.
+				get()
+					.beginBroadcast(trip.id)
+					.catch(() => set({ isBroadcasting: false }))
+			}
+		} catch (e) {
+			// Only a REJECTED token ends the session. A network failure must not
+			// log the driver out, or every dead spot forces a re-registration.
+			if (e?.response?.status === 401) {
+				await AsyncStorage.multiRemove([KEYS.token, KEYS.driver])
+				api.setAuthToken(null)
+				set({ driver: null, trip: null })
+			}
 		}
 	},
 
@@ -159,6 +187,7 @@ export const useStore = create((set, get) => ({
 	corridorRadiusM: null,
 	destinationPosition: null,
 	vehiclesFor: null,
+	destinationResolved: true,
 	vehicleFilter: 'all',
 	selectedVehicleId: null,
 	recentSearches: [],
@@ -196,6 +225,7 @@ export const useStore = create((set, get) => ({
 
 	refresh: async () => {
 		const { destination, vehicleFilter } = get()
+		const seq = ++refreshSeq
 		set({ loading: true })
 
 		try {
@@ -204,6 +234,10 @@ export const useStore = create((set, get) => ({
 				destCoords: destination?.lat != null ? { lat: destination.lat, lng: destination.lng } : undefined,
 				vehicleType: vehicleFilter
 			})
+			// A slower earlier request must not overwrite a newer answer, or the
+			// header ends up describing a list it did not produce.
+			if (seq !== refreshSeq) return
+
 			set({
 				vehicles,
 				activeCount: meta.count ?? vehicles.length,
@@ -219,6 +253,9 @@ export const useStore = create((set, get) => ({
 				// The place this list was measured against. Naming a distance
 				// after a destination it was not computed for invents a figure.
 				vehiclesFor: destination?.name ?? null,
+				// The server says outright when it could not locate the place; saying
+				// "no rides pass there" instead would blame the fleet for a typo.
+				destinationResolved: meta.resolved !== false,
 				error: null
 			})
 			get().checkProximity()
@@ -234,9 +271,13 @@ export const useStore = create((set, get) => ({
 	 * map marker, the distance lines, and the nearby vibration — that is all.
 	 */
 	enableMyLocation: async () => {
+		// A second tap while the first is still resolving would leave an
+		// orphaned watcher writing myLocation forever.
+		if (myLocationWatcher) return true
+
 		const servicesOn = await Location.hasServicesEnabledAsync().catch(() => false)
 		if (!servicesOn) {
-			get().showToast(getCopy().driverHome.locationServicesOff)
+			get().showToast(getCopy().mapHome.locationServicesOff)
 			return false
 		}
 
@@ -258,7 +299,9 @@ export const useStore = create((set, get) => ({
 		try {
 			// Seed from the OS cache instantly, then demand a fresh fix — the
 			// cache alone can be empty on a cold permission grant.
-			const seed = await Location.getLastKnownPositionAsync()
+			// Bounded: an hours-old fix from another city would place the dot —
+			// and every distance computed from it — somewhere they are not.
+			const seed = await Location.getLastKnownPositionAsync({ maxAge: 60_000 })
 			apply(seed?.coords)
 
 			// High, not Balanced: on some devices (this MediaTek included) the
@@ -290,7 +333,7 @@ export const useStore = create((set, get) => ({
 			myLocationWatcher.remove()
 			myLocationWatcher = null
 		}
-		lastNearId = null
+		alertedIds = new Set()
 		set({ myLocation: null, myLocationOn: false })
 		get().showToast(getCopy().mapHome.myLocationOff)
 	},
@@ -312,16 +355,18 @@ export const useStore = create((set, get) => ({
 			.filter(x => x.d !== null)
 			.sort((a, b) => a.d - b.d)
 
-		const nearest = withDistance[0]
-		if (!nearest) return
-
-		if (nearest.d <= NEAR_M && lastNearId !== nearest.v.id) {
-			lastNearId = nearest.v.id
-			Vibration.vibrate([0, 250, 120, 250])
-			get().showToast(getCopy().mapHome.near(nearest.v.plate_number))
-		} else if (nearest.d > NEAR_RESET_M && lastNearId === nearest.v.id) {
-			lastNearId = null
+		// Per VEHICLE, not just the nearest one: with two jeepneys in range
+		// a single slot flip-flopped and buzzed on every poll.
+		for (const { v, d } of withDistance) {
+			if (d > NEAR_RESET_M) alertedIds.delete(v.id)
 		}
+
+		const arriving = withDistance.find(x => x.d <= NEAR_M && !alertedIds.has(x.v.id))
+		if (!arriving) return
+
+		alertedIds.add(arriving.v.id)
+		Vibration.vibrate([0, 250, 120, 250])
+		get().showToast(getCopy().mapHome.near(arriving.v.plate_number))
 	},
 
 	startPolling: () => {

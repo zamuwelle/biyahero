@@ -43,7 +43,10 @@ export default function LicenceCapture() {
 	const cameraRef = useRef(null)
 	const [permission, requestPermission] = useCameraPermissions()
 	const [capturing, setCapturing] = useState(false)
+	// Which FIELD the message belongs to — a single slot pinned every error
+	// under the name box, blaming whichever input was innocent.
 	const [error, setError] = useState(null)
+	const [errorField, setErrorField] = useState('name')
 
 	const capture = async () => {
 		if (!cameraRef.current || capturing) return
@@ -62,11 +65,11 @@ export default function LicenceCapture() {
 	}
 
 	const submit = async () => {
-		if (!draft.licencePhotoUri) return setError(copy.licence.needPhoto)
-		if (!draft.name.trim()) return setError(copy.licence.invalidName)
-		if (!LICENCE_PATTERN.test(draft.license_no.trim().toUpperCase())) return setError(copy.licence.invalidNumber)
-		if (!EXPIRY_PATTERN.test(draft.license_expires_at.trim())) return setError(copy.licence.invalidExpiry)
-		if (new Date(draft.license_expires_at.trim()) <= new Date()) return setError(copy.licence.expiredLicence)
+		if (!draft.licencePhotoUri) return (setErrorField('photo'), setError(copy.licence.needPhoto))
+		if (!draft.name.trim()) return (setErrorField('name'), setError(copy.licence.invalidName))
+		if (!LICENCE_PATTERN.test(draft.license_no.trim().toUpperCase())) return (setErrorField('license_no'), setError(copy.licence.invalidNumber))
+		if (!EXPIRY_PATTERN.test(draft.license_expires_at.trim())) return (setErrorField('license_expires_at'), setError(copy.licence.invalidExpiry))
+		if (new Date(draft.license_expires_at.trim()) <= new Date()) return (setErrorField('license_expires_at'), setError(copy.licence.expiredLicence))
 		setError(null)
 
 		try {
@@ -151,7 +154,7 @@ export default function LicenceCapture() {
 								value={draft.name}
 								onChangeText={value => update({ name: value })}
 								autoCapitalize="words"
-								error={error}
+								error={errorField === 'name' ? error : null}
 							/>
 							<Field
 								label={copy.licence.numberLabel}
@@ -160,6 +163,7 @@ export default function LicenceCapture() {
 								onChangeText={value => update({ license_no: value.toUpperCase() })}
 								autoCapitalize="characters"
 								mono
+								error={errorField === 'license_no' ? error : null}
 								hint={copy.licence.hashNote}
 							/>
 							<Field
@@ -170,6 +174,7 @@ export default function LicenceCapture() {
 								keyboardType="numbers-and-punctuation"
 								autoCorrect={false}
 								mono
+								error={errorField === 'license_expires_at' ? error : null}
 							/>
 						</View>
 					)}
