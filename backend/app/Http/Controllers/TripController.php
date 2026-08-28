@@ -134,6 +134,9 @@ class TripController extends Controller
         return $this->success($trip->load('route'), 'Napalitan ang ruta.');
     }
 
+    /** How many past routes the driver gets as one-tap shortcuts. */
+    private const RECENT_ROUTE_LIMIT = 5;
+
     /**
      * The routes this driver has actually run, most recent first. A jeepney
      * driver repeats the same run daily, so their own history is a better
@@ -154,12 +157,14 @@ class TripController extends Controller
             ->whereNotNull('ended_at')
             ->with('route')
             ->latest('started_at')
-            ->take(30)
+            // Wide enough that a week of repeating the same run still surfaces
+            // five DISTINCT routes; a driver who only ever ran four has four.
+            ->take(200)
             ->get()
             ->filter(fn (Trip $trip) => $trip->route !== null)
             // One row per route: the same run repeated all week is one shortcut.
             ->unique('route_id')
-            ->take(3)
+            ->take(self::RECENT_ROUTE_LIMIT)
             ->map(fn (Trip $trip) => [
                 'id' => $trip->route->id,
                 'label' => $trip->route->label ?? $trip->route->name,

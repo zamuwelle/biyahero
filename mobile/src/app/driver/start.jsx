@@ -206,9 +206,10 @@ export default function StartTrip() {
 		}
 	}, [destination, selectedRouteId, pinned, pickedKnown, driver])
 
-	// Their own history leads; corridors near them follow. Replacing one with
-	// the other would strand a driver working away from their usual run.
-	const routeShortcuts = [...recent, ...nearby.filter(n => !recent.some(r => r.id === n.id))]
+	// The driver's own last five routes — one list, one length, no guessing
+	// why it grew. Corridors near them appear only when there is no history
+	// at all, so a driver's first run still has somewhere to start.
+	const routeShortcuts = recent.length > 0 ? recent : nearby
 
 	const typeDestination = text => {
 		chosenRef.current++
@@ -402,7 +403,6 @@ export default function StartTrip() {
 							<Txt variant="labelS" className="text-fg-secondary">
 								{recent.length > 0 ? copy.startTrip.recentLabel : copy.startTrip.nearbyLabel}
 							</Txt>
-							{/* Both lists can show at once, so each row says which it is. */}
 							<View className="gap-2">
 								{routeShortcuts.map(r => (
 									<Pressable

@@ -271,22 +271,31 @@ it('rejects a place search that is too short to mean anything', function () {
     $this->getJson('/api/places/search?q=b')->assertUnprocessable();
 });
 
-it('offers the driver their three most recent routes, newest first, no repeats', function () {
+it('offers the driver their five most recent routes, newest first, no repeats', function () {
     $driver = actingDriver();
 
     // Own the whole history for this vehicle so the ordering under test is the
     // only ordering in play — the seeder ships runs of its own.
     Trip::query()->where('vehicle_id', $driver->vehicle->id)->delete();
 
-    // Five finished runs across three routes, one of them repeated — the
-    // shortcut list must collapse repeats and keep only the latest three.
-    $routes = Route::query()->take(4)->pluck('id')->all();
+    // Six distinct routes plus a repeat: the list must collapse the repeat,
+    // keep the newest five, and drop the sixth-oldest entirely.
+    $routes = Route::query()->take(5)->pluck('id')->all();
+    $routes[] = Route::create([
+        'name' => 'Test Sixth',
+        'label' => 'Test Sixth',
+        'waypoints' => [['lat' => 14.5, 'lng' => 121.0], ['lat' => 14.6, 'lng' => 121.1]],
+        'length_km' => 5,
+    ])->id;
+
     $plan = [
-        [$routes[0], 'Baclaran', 5],
-        [$routes[1], 'Cubao', 4],
-        [$routes[0], 'Baclaran ulit', 3],
-        [$routes[2], 'Monumento', 2],
-        [$routes[3], 'Alabang', 1],
+        [$routes[0], 'Pinakaluma', 9],
+        [$routes[5], 'Ikaanim', 8],
+        [$routes[1], 'Cubao', 5],
+        [$routes[0], 'Baclaran ulit', 4],
+        [$routes[2], 'Monumento', 3],
+        [$routes[3], 'Alabang', 2],
+        [$routes[4], 'Ayala', 1],
     ];
 
     foreach ($plan as [$routeId, $destination, $daysAgo]) {
@@ -302,11 +311,12 @@ it('offers the driver their three most recent routes, newest first, no repeats',
 
     $rows = $this->getJson('/api/routes/recent')->assertOk()->json('data');
 
-    expect($rows)->toHaveCount(3)
-        // Newest first: Alabang (1 day), Monumento (2), then the repeat of
-        // route[0] at 3 days — its 5-day-old run must not appear again.
-        ->and(array_column($rows, 'destination'))->toBe(['Alabang', 'Monumento', 'Baclaran ulit'])
-        ->and(array_column($rows, 'id'))->toBe([$routes[3], $routes[2], $routes[0]])
+    expect($rows)->toHaveCount(5)
+        ->and(array_column($rows, 'destination'))
+        ->toBe(['Ayala', 'Alabang', 'Monumento', 'Baclaran ulit', 'Cubao'])
+        // The 8-day-old sixth route falls off the end; the 9-day-old run on
+        // route[0] is represented by its newer repeat, not twice.
+        ->and(array_column($rows, 'id'))->not->toContain($routes[5])
         ->and($rows[0])->toHaveKeys(['id', 'label', 'length_km', 'destination', 'last_used_at']);
 });
 
