@@ -6,27 +6,27 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
-    {
-        Schema::create('vehicles', function (Blueprint $table) {
-            $table->id();
-						$table->string('vehicle_code');
-						$table->string('vehicle_type');
-						$table->foreignId('route_id')->constrained()->onDelete('cascade');
-						$table->integer('current_waypoint_index')->default(0);
-						$table->enum('direction', ['forward', 'backward'])->default('forward');
-            $table->timestamps();
-        });
-    }
+	public function up()
+	{
+		Schema::create('vehicles', function (Blueprint $table) {
+			$table->id();
+			$table->foreignId('user_id')->nullable()->constrained()->onDelete('set null');
+			$table->string('vehicle_code');
+			$table->string('vehicle_type');
+			$table->string('plate_number')->nullable();
+			$table->string('model')->nullable();
+			$table->enum('occupancy', ['available', 'moderate', 'full'])->default('available');
+			$table->foreignId('route_id')->default(1)->constrained()->onDelete('cascade');
+			$table->integer('current_waypoint_index')->default(0);
+			$table->enum('direction', ['forward', 'backward'])->default('forward');
+			$table->decimal('live_lat', 10, 7)->nullable();
+			$table->decimal('live_lng', 10, 7)->nullable();
+			$table->timestamps();
+		});
+	}
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
-    {
-        Schema::dropIfExists('vehicles');
-    }
+	public function down()
+	{
+		Schema::dropIfExists('vehicles');
+	}
 };

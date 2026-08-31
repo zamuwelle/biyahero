@@ -18,10 +18,11 @@ module.exports = ({ config }) => ({
 	},
 	android: {
 		adaptiveIcon: {
-			backgroundColor: '#E6F4FE',
-			foregroundImage: './src/assets/icon.png',
-			backgroundImage: './src/assets/icon.png',
-			monochromeImage: './src/assets/icon.png'
+			// The launcher masks the foreground to its own shape and crops ~28%,
+			// so the artwork is inset on a transparent canvas over a flat white.
+			backgroundColor: '#FFFFFF',
+			foregroundImage: './src/assets/icon-foreground.png',
+			monochromeImage: './src/assets/icon-foreground.png'
 		},
 		package: 'com.anonymous.biyahero',
 		config: {
@@ -34,7 +35,24 @@ module.exports = ({ config }) => ({
 		bundler: 'metro',
 		favicon: './src/assets/icon.png'
 	},
-	plugins: ['expo-router'],
+	plugins: [
+		'expo-router',
+		[
+			'expo-camera',
+			{
+				cameraPermission:
+					'Ginagamit ang camera para kunan ng larawan ang lisensya mo para sa beripikasyon.'
+			}
+		],
+		[
+			'expo-location',
+			{
+				// Drivers only, and only while a trip is running.
+				locationAlwaysAndWhenInUsePermission:
+					'Ginagamit ang lokasyon mo habang may biyahe ka para makita ka ng mga pasahero.'
+			}
+		]
+	],
 	extra: {
 		apiUrl: process.env.API_URL,
 		router: {},

@@ -1,0 +1,352 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Destination;
+use App\Models\Trip;
+use App\Services\CorridorMatcher;
+use App\Services\Geocoder;
+use App\Services\PlaceAutocomplete;
+use App\Services\PoiFinder;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+
+/**
+ * Place type-ahead for both sides of the app.
+ *
+ * Places already known to Biyahero come first — picking one keeps trips on
+ * the corridors commuters are already searching — then anywhere else in the
+ * Philippines via OpenStreetMap, so a town we have never seen still yields a
+ * real, exact destination instead of free text.
+ *
+ * The two type-ahead entry points differ only in how they RANK, and that
+ * difference is the privacy line: search() is driver-side (auth) and ranks by
+ * distance from the driver's own position, while suggest() is public and ranks
+ * by distance to the running fleet, because no commuter position exists to
+ * rank with.
+ *
+ * nearby() is a third thing: the places to DRAW inside a map viewport. It is
+ * public and takes coordinates, which looks like a privacy hole and is not —
+ * a viewport is where the map is pointed, which the user chose by dragging.
+ * It is never the device's position, and nothing here records it.
+ */
+class PlaceController extends Controller
+{
+    public function __construct(
+        protected Geocoder $geocoder,
+        protected CorridorMatcher $corridor,
+        protected PoiFinder $poi,
+        protected PlaceAutocomplete $autocomplete,
+    ) {}
+
+    /**
+     * The point behind a Google prediction the driver picked.
+     *
+     * Predictions carry no coordinates — that is what makes them cheap — so
+     * the one they choose is resolved here, with the same session token, which
+     * is what closes the billing session on Google's side.
+     */
+    public function resolve(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'place_id' => 'required|string|max:400',
+            'session' => 'required|string|max:100',
+        ]);
+
+        $place = $this->autocomplete->resolve($validated['place_id'], $validated['session']);
+
+        // A prediction we cannot turn into a point is not a destination. The
+        // app falls back to asking the driver to pin it on the map.
+        return response()->json(['data' => $place]);
+    }
+
+    /**
+     * Places inside the map's current viewport, so Biyahero can draw its own
+     * place layer.
+     *
+     * It draws one because the Google Maps SDK will not: a custom map style
+     * applies to the plain map type only, so satellite and terrain showed a
+     * different, much thinner set of labels and the three layers disagreed
+     * about what exists. Ours are the same markers on every layer.
+     */
+    public function nearby(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'south' => 'required|numeric|between:-90,90',
+            'north' => 'required|numeric|between:-90,90',
+            'west' => 'required|numeric|between:-180,180',
+            'east' => 'required|numeric|between:-180,180',
+        ]);
+
+        $places = $this->poi->inBox(
+            (float) $validated['south'],
+            (float) $validated['west'],
+            (float) $validated['north'],
+            (float) $validated['east'],
+        );
+
+        return response()->json(['data' => $places]);
+    }
+
+    /**
+     * Type-ahead for the COMMUTER's "Saan ka pupunta?" — public, and it takes
+     * no position at all. Ranking comes from where the fleet actually runs
+     * instead: a place several jeepneys pass is a more useful answer than a
+     * namesake in another province, and the server already knows every active
+     * route without asking the commuter anything.
+     */
+    public function suggest(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['q' => 'required|string|min:2|max:120']);
+
+        $needle = mb_strtolower(trim($validated['q']));
+
+        $known = Destination::query()
+            ->get()
+            ->filter(fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle))
+            ->take(4)
+            ->map(fn (Destination $d) => [
+                'name' => $d->name,
+                'subtitle' => $d->subtitle ?? '',
+                'lat' => (float) $d->lat,
+                'lng' => (float) $d->lng,
+                'known' => true,
+            ])
+            // Without this the filtered collection keeps its original keys and
+            // the whole payload serialises as a JSON object, not a list.
+            ->values();
+
+        $cacheKey = 'suggest:'.md5($needle);
+        $found = Cache::get($cacheKey);
+
+        if ($found === null) {
+            $found = $this->geocoder->searchMany($validated['q'], null, null, 12);
+
+            if ($found !== []) {
+                Cache::put($cacheKey, $found, 300);
+            }
+        }
+
+        // Every polyline currently carrying a vehicle, loaded once — and only
+        // when there are candidates to rank against it.
+        $liveRoutes = $found === [] ? [] : Trip::query()
+            ->active()
+            ->with('route')
+            ->get()
+            ->pluck('route')
+            ->filter()
+            ->unique('id')
+            ->map(fn ($route) => $route->waypoints ?? [])
+            ->filter()
+            ->all();
+
+        $places = collect($found)
+            // Same name AND same place — never name alone. "Victoria" exists in
+            // half a dozen provinces, and hiding all but ours would strand
+            // anyone searching for one of the others.
+            ->reject(fn (array $p) => $known->contains(
+                fn (array $k) => mb_strtolower($k['name']) === mb_strtolower($p['name'])
+                    && $this->roughDistanceKm($k['lat'], $k['lng'], $p['lat'], $p['lng']) <= 2
+            ))
+            ->map(fn (array $p) => [...$p, 'known' => false])
+            ->sortBy(fn (array $p) => $this->distanceToFleetM($p['lat'], $p['lng'], $liveRoutes))
+            ->take(6)
+            ->values();
+
+        return response()->json(['data' => $known->concat($places)->all()]);
+    }
+
+    /**
+     * How far a place sits from the nearest route with a vehicle on it. INF
+     * when nothing is running, which leaves the geocoder's own order intact.
+     *
+     * @param  array<array<array{lat: float, lng: float}>>  $routes
+     */
+    private function distanceToFleetM(float $lat, float $lng, array $routes): float
+    {
+        $nearest = INF;
+
+        foreach ($routes as $waypoints) {
+            $nearest = min($nearest, $this->corridor->minDistanceToRoute($lat, $lng, $waypoints));
+        }
+
+        return $nearest;
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        // A lone lat or lng is meaningless here and would reach the distance
+        // maths as null — require the pair or neither.
+        $validated = $request->validate([
+            'q' => 'required|string|min:2|max:120',
+            'lat' => 'nullable|required_with:lng|numeric|between:-90,90',
+            'lng' => 'nullable|required_with:lat|numeric|between:-180,180',
+            // Groups the keystrokes of one search with the pick that ends it,
+            // so Google bills the pair once instead of every letter typed.
+            'session' => 'nullable|string|max:100',
+        ]);
+
+        $needle = mb_strtolower(trim($validated['q']));
+        $lat = isset($validated['lat']) ? (float) $validated['lat'] : null;
+        $lng = isset($validated['lng']) ? (float) $validated['lng'] : null;
+        $located = $lat !== null && $lng !== null;
+        $session = $validated['session'] ?? null;
+
+        $known = Destination::query()
+            ->get()
+            ->filter(fn (Destination $d) => str_contains(mb_strtolower($d->name), $needle))
+            ->sortBy(fn (Destination $d) => $located ? $this->roughDistanceKm($lat, $lng, (float) $d->lat, (float) $d->lng) : 0)
+            ->take(3)
+            // Same shape as a geocoded row, distance included: a place we
+            // seeded is no less likely to be in the wrong province.
+            ->map(fn (Destination $d) => [
+                'name' => $d->name,
+                'subtitle' => $d->subtitle ?? '',
+                'lat' => (float) $d->lat,
+                'lng' => (float) $d->lng,
+                'known' => true,
+                'distance_m' => $located
+                    ? (int) round($this->roughDistanceKm($lat, $lng, (float) $d->lat, (float) $d->lng) * 1000)
+                    : null,
+            ])
+            ->values();
+
+        // Google first when it is configured: it is the only source that has
+        // the small businesses a driver names, and the reason it is here. Its
+        // own ranking is left alone — re-sorting predictions by distance would
+        // throw away exactly what we are paying for.
+        if ($session !== null && $this->autocomplete->configured()) {
+            $predicted = $this->autocomplete->suggest($validated['q'], $lat, $lng, $session);
+
+            if ($predicted !== []) {
+                $rows = collect($predicted)
+                    ->reject(fn (array $p) => $known->contains(
+                        fn (array $k) => mb_strtolower($k['name']) === mb_strtolower($p['name'])
+                    ))
+                    ->take(5)
+                    ->map(fn (array $p) => [
+                        'name' => $p['name'],
+                        'subtitle' => $p['subtitle'],
+                        // Resolved on selection, not here.
+                        'lat' => null,
+                        'lng' => null,
+                        'place_id' => $p['place_id'],
+                        'known' => false,
+                        'distance_m' => $p['distance_m'],
+                    ])
+                    ->values();
+
+                return response()->json(['data' => $known->concat($rows)->all()]);
+            }
+        }
+
+        // Nominatim asks for at most one call per second, and drivers type
+        // fast — cache each (query, rough area) briefly.
+        $cacheKey = 'places:'.md5($needle.'|'.round($lat ?? 0, 1).'|'.round($lng ?? 0, 1));
+        $found = Cache::get($cacheKey);
+
+        if ($found === null) {
+            $found = $this->geocoder->searchMany($validated['q'], $lat, $lng, 12);
+
+            // Only cache real answers: the geocoder returns [] for a timeout
+            // exactly as it does for "no such place", and caching that would
+            // blank the query for five minutes over one hiccup.
+            if ($found !== []) {
+                Cache::put($cacheKey, $found, 300);
+            }
+        }
+
+        // Nominatim's viewbox is only a hint — it still ranks a namesake in
+        // Cebu above the one down the road. Distance from the driver decides
+        // here: a jeepney destination is somewhere they can actually drive.
+        // The town they may have tacked on: "Siowings apalit" only returns
+        // anything once "apalit" is dropped, so it comes back here as a hint.
+        $hint = $this->geocoder->areaHint($validated['q']);
+
+        $places = collect($found)
+            // Drop a geocoded hit only when it IS the known row — same name
+            // AND same place. PH names repeat province to province, so a
+            // name-only match would hide the Baclaran down the road.
+            ->reject(fn (array $p) => $known->contains(
+                fn (array $k) => mb_strtolower($k['name']) === mb_strtolower($p['name'])
+                    && $this->roughDistanceKm($k['lat'], $k['lng'], $p['lat'], $p['lng']) <= 2
+            ))
+            ->map(fn (array $p) => [...$p, 'score' => $this->score($p, $needle, $hint, $lat, $lng, $located)])
+            ->sortByDesc('score')
+            // One branch of a chain is a suggestion; five is a list the driver
+            // has to read. Two leaves room for "the one here" and "the other one".
+            ->groupBy(fn (array $p) => mb_strtolower($p['name']))
+            ->flatMap(fn ($branches) => $branches->take(2))
+            ->sortByDesc('score')
+            ->take(5)
+            // How far it is, so a driver can see that the Jollibee on offer is
+            // in the next province before they commit a whole run to it.
+            ->map(fn (array $p) => [
+                'name' => $p['name'],
+                'subtitle' => $p['subtitle'],
+                'lat' => $p['lat'],
+                'lng' => $p['lng'],
+                'known' => false,
+                'distance_m' => $located
+                    ? (int) round($this->roughDistanceKm($lat, $lng, $p['lat'], $p['lng']) * 1000)
+                    : null,
+            ])
+            ->values();
+
+        return response()->json(['data' => $known->concat($places)->all()]);
+    }
+
+    /**
+     * How well one candidate answers what was typed, blended with how far it
+     * is.
+     *
+     * Neither half works alone. Rank purely by string similarity and a driver
+     * in Victoria is offered a namesake two provinces away; rank purely by
+     * distance and typing an exact business name gets them whatever shop
+     * happens to be nearest instead.
+     */
+    private function score(array $place, string $needle, ?string $hint, ?float $lat, ?float $lng, bool $located): float
+    {
+        $haystack = mb_strtolower($place['name'].' '.$place['subtitle']);
+        $tokens = preg_split('/[\s,\-]+/u', $needle, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        // How much of what they typed this row actually accounts for. Token
+        // coverage, not a leading prefix: "coffee" should find "The Coffee Bean".
+        $matched = count(array_filter($tokens, fn (string $t) => str_contains($haystack, $t)));
+        $relevance = $tokens === [] ? 0.0 : $matched / count($tokens);
+
+        // A name that STARTS with the query is what they meant far more often
+        // than one that merely contains it somewhere.
+        if (str_starts_with(mb_strtolower($place['name']), $needle)) {
+            $relevance += 0.3;
+        }
+
+        // The town we had to drop to get any results at all. Honouring it is
+        // the difference between the Apalit branch and a namesake elsewhere.
+        if ($hint !== null && str_contains($haystack, $hint)) {
+            $relevance += 0.4;
+        }
+
+        // Nominatim's own popularity prior, deliberately capped: enough to
+        // keep the town of Victoria above a sari-sari store of the same name,
+        // not enough to beat a real match nearby.
+        $relevance += min(0.3, (float) ($place['importance'] ?? 0));
+
+        if (! $located) {
+            return $relevance;
+        }
+
+        // Halves every 15 km — near enough to matter, gentle enough that an
+        // exact name match still beats a vague one down the road.
+        $proximity = 1 / (1 + $this->roughDistanceKm($lat, $lng, $place['lat'], $place['lng']) / 15);
+
+        return 0.6 * $relevance + 0.4 * $proximity;
+    }
+
+    /** Cheap ranking distance — exactness does not matter for sort order. */
+    private function roughDistanceKm(float $aLat, float $aLng, float $bLat, float $bLng): float
+    {
+        return sqrt((($bLat - $aLat) * 111) ** 2 + (($bLng - $aLng) * 107) ** 2);
+    }
+}

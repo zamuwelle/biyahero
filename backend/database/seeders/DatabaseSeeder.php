@@ -10,7 +10,9 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RouteSeeder::class,
+            DestinationSeeder::class,
             VehicleSeeder::class,
+            TripSeeder::class,
         ]);
     }
 }

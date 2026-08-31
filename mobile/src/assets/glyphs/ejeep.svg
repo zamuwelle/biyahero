@@ -1,0 +1,12 @@
+<svg width="26" height="18" viewBox="0 0 26 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Vehicle Glyph">
+<g id="Type=E-Jeep">
+<rect id="Rectangle" x="7" width="10" height="3" rx="1" fill="currentColor"/>
+<rect id="Rectangle_2" x="2" y="3" width="21" height="10" rx="2.5" fill="currentColor"/>
+<rect id="Rectangle_3" opacity="0.32" x="4" y="5" width="7" height="3.5" rx="1" fill="currentColor"/>
+<path id="bolt" opacity="0.9" d="M18.2 4.59998L15 8.79998H16.9L15.9 11.6L19.2 7.19998H17.3L18.2 4.59998Z" fill="currentColor"/>
+<circle id="Ellipse" cx="6.5" cy="13.5" r="2.5" fill="currentColor"/>
+<circle id="Ellipse_2" cx="17.5" cy="13.5" r="2.5" fill="currentColor"/>
+</g>
+</g>
+</svg>
