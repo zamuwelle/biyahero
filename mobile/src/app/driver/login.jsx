@@ -47,7 +47,7 @@ export default function DriverLogin() {
 		<Screen>
 			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6 pt-4 gap-6 flex-grow" keyboardShouldPersistTaps="handled">
-					<Header eyebrow={copy.login.eyebrow} title={copy.login.title} />
+					<Header eyebrow={copy.login.eyebrow} title={copy.login.title} onBack={() => router.replace('/role')} />
 
 					<Txt variant="bodyM" className="text-fg-secondary">{copy.login.body}</Txt>
 

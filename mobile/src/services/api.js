@@ -124,7 +124,6 @@ export const fetchDestinations = q =>
 export const fetchRoute = id => client.get(`/routes/${id}`).then(res => res.data)
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-const client = axios.create({ baseURL: Constants.expoConfig?.extra?.apiUrl, timeout: 8000 })
 
 /** Which route serves this destination — used for the driver's pre-trip preview. */
 export const fetchRouteForDestination = destination =>

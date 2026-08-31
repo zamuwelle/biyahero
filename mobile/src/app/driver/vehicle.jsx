@@ -77,6 +77,7 @@ export default function VehicleDetails() {
 						eyebrow={copy.vehicleDetails.eyebrow}
 						title={isEdit ? copy.vehicleDetails.editTitle : copy.vehicleDetails.title}
 						right={isEdit ? null : <Txt variant="labelS" className="text-fg-secondary">{copy.signUp.step(1, 2)}</Txt>}
+						onBack={isEdit ? undefined : () => router.replace('/role')}
 					/>
 
 					<Txt variant="bodyM" className="text-fg-secondary">{copy.vehicleDetails.body}</Txt>
@@ -92,9 +93,8 @@ export default function VehicleDetails() {
 										onPress={() => update({ vehicle_type: type })}
 										accessibilityRole="radio"
 										accessibilityState={{ selected: active }}
-										className={`min-w-[47%] flex-1 items-center gap-2 rounded-lg border-2 py-4 active:opacity-80 ${
-											active ? 'border-brand bg-brand-subtle' : 'border-line-subtle bg-surface'
-										}`}
+										className={`min-w-[47%] flex-1 items-center gap-2 rounded-lg border-2 py-4 active:opacity-80 ${active ? 'border-brand bg-brand-subtle' : 'border-line-subtle bg-surface'
+											}`}
 									>
 										<VehicleGlyph type={type} width={34} color={theme.icon.primary} />
 										<Txt variant="labelL" className={active ? 'text-fg' : 'text-fg-secondary'}>
