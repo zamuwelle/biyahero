@@ -12,7 +12,7 @@
     "skills": [
         "infer-conventions",
         "laravel-best-practices",
-        "octane-development",
-        "pest-testing"
+        "testing-best-practices",
+        "octane-development"
     ]
 }
