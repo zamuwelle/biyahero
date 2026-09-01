@@ -259,10 +259,18 @@ export const fetchNearbyRoutes = ({ latitude, longitude }) =>
 
 export const fetchTripSummary = () => client.get('/trips/summary').then(res => res.data?.data)
 
-export const startTrip = (destination, { routeId, position, destCoords } = {}) =>
+/**
+ * Roads the driver says they actually take, in the order they drive them.
+ * A jeepney route is defined by its roads, not its endpoints.
+ */
+const viaPayload = via =>
+	via?.length ? { via: via.map(p => ({ lat: p.latitude, lng: p.longitude })) } : {}
+
+export const startTrip = (destination, { routeId, position, destCoords, via } = {}) =>
 	client
 		.post('/trips', {
 			destination,
+			...viaPayload(via),
 			...(routeId ? { route_id: routeId } : {}),
 			// The driver's own position: route resolution starts from here, so a
 			// Tarlac driver can never be handed a Metro Manila corridor.
@@ -272,7 +280,7 @@ export const startTrip = (destination, { routeId, position, destCoords } = {}) =
 		.then(res => res.data?.data)
 
 /** Mid-trip destination change — the route re-resolves from the live position. */
-export const rerouteTrip = (tripId, destination, { routeId, position, destCoords } = {}) =>
+export const rerouteTrip = (tripId, destination, { routeId, position, destCoords, via } = {}) =>
 	client
 		.patch(`/trips/${tripId}/route`, {
 			destination,

@@ -62,6 +62,10 @@ export default function StartTrip() {
 	const [selectedRouteId, setSelectedRouteId] = useState(null)
 	const [pinned, setPinned] = useState(null)
 	const [picking, setPicking] = useState(false)
+	// Which pin the map picker is collecting: the destination, or another road
+	// along the way.
+	const [pickMode, setPickMode] = useState('destination')
+	const [via, setVia] = useState([])
 	const [pickPoint, setPickPoint] = useState(null)
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
@@ -305,8 +309,25 @@ export default function StartTrip() {
 		Keyboard.dismiss()
 	}
 
+	const addVia = async () => {
+		if (!pickPoint) return
+		const point = pickPoint
+		setPicking(false)
+		setVia(list => [...list, point])
+
+		// Named on the device, so it costs no request and no rate limit. It is
+		// only a label — the coordinate is what shapes the route.
+		const [place] = await Location.reverseGeocodeAsync(point).catch(() => [])
+		const name = place?.name ?? place?.street ?? place?.district ?? null
+		if (name) {
+			setVia(list => list.map(p => (p === point ? { ...p, name } : p)))
+		}
+	}
+
 	const confirmPin = async () => {
 		if (!pickPoint) return
+		if (pickMode === 'via') return addVia()
+
 		const token = ++chosenRef.current
 		setPicking(false)
 		setPinned(pickPoint)
@@ -334,7 +355,10 @@ export default function StartTrip() {
 		try {
 			const options = {
 				routeId: selectedRouteId ?? undefined,
-				destCoords: pinned ?? undefined
+				destCoords: pinned ?? undefined,
+				// Only meaningful for a route we are about to build: tapping a
+				// listed corridor already picked its roads.
+				via: selectedRouteId ? undefined : via
 			}
 			const rerouted = rerouting
 			const trip = rerouted ? await rerouteTrip(name, options) : await startTrip(name, options)
@@ -380,11 +404,17 @@ export default function StartTrip() {
 				</MapView>
 
 				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="rounded-lg bg-surface p-3">
-					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.pinHint}</Txt>
+					<Txt variant="bodyMStrong" className="text-center">
+						{pickMode === 'via' ? copy.startTrip.viaPinHint : copy.startTrip.pinHint}
+					</Txt>
 				</View>
 
 				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
-					<Button label={copy.startTrip.pinUse} onPress={confirmPin} disabled={!pickPoint} />
+					<Button
+						label={pickMode === 'via' ? copy.startTrip.viaPinUse : copy.startTrip.pinUse}
+						onPress={confirmPin}
+						disabled={!pickPoint}
+					/>
 					<Button label={copy.common.cancel} tone="secondary" onPress={() => setPicking(false)} />
 				</View>
 			</View>
@@ -455,6 +485,7 @@ export default function StartTrip() {
 
 					<Pressable
 						onPress={() => {
+							setPickMode('destination')
 							setPickPoint(pinned ?? null)
 							setPicking(true)
 						}}
@@ -467,6 +498,51 @@ export default function StartTrip() {
 						</Txt>
 						{!!pinned && <MaterialIcons name="check-circle" size={18} color={theme.text.success} />}
 					</Pressable>
+
+					{/* Only for a route we are about to build. Tapping a listed
+					    corridor already chose its roads, and a driver with no
+					    destination yet has nothing for these to sit between. */}
+					{!selectedRouteId && (destination.trim().length > 0 || pinned) && (
+						<View className="gap-3">
+							<View className="gap-[3px]">
+								<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.viaLabel}</Txt>
+								<Txt variant="caption" className="text-fg-secondary">{copy.startTrip.viaHint}</Txt>
+							</View>
+
+							{via.map((point, index) => (
+								<View
+									key={`${point.latitude},${point.longitude},${index}`}
+									className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-3"
+								>
+									<Txt variant="bodyMStrong" className="text-fg-secondary">{index + 1}</Txt>
+									<Txt variant="bodyM" numberOfLines={1} className="min-w-0 flex-1">
+										{point.name ?? copy.startTrip.viaPinned}
+									</Txt>
+									<Pressable
+										onPress={() => setVia(list => list.filter((_, at) => at !== index))}
+										accessibilityRole="button"
+										accessibilityLabel={copy.startTrip.viaRemove}
+										hitSlop={10}
+									>
+										<MaterialIcons name="close" size={20} color={theme.icon.secondary} />
+									</Pressable>
+								</View>
+							))}
+
+							<Pressable
+								onPress={() => {
+									setPickMode('via')
+									setPickPoint(null)
+									setPicking(true)
+								}}
+								accessibilityRole="button"
+								className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-dashed border-line-subtle p-3 active:opacity-80"
+							>
+								<MaterialIcons name="add" size={22} color={theme.icon.secondary} />
+								<Txt variant="bodyMStrong" className="text-fg-secondary">{copy.startTrip.viaAdd}</Txt>
+							</Pressable>
+						</View>
+					)}
 
 					{routeShortcuts.length > 0 && (
 						<View className="gap-3">

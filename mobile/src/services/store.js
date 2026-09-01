@@ -444,7 +444,7 @@ export const useStore = create((set, get) => ({
 	 * Starting a trip is what makes the driver visible. Location capture begins
 	 * here and nowhere else — this is the app's only GPS permission prompt.
 	 */
-	startTrip: async (destination, { routeId, destCoords } = {}) => {
+	startTrip: async (destination, { routeId, destCoords, via } = {}) => {
 		// The server refuses an unapproved driver too; this is the local guard so
 		// we never even ask for GPS from someone who cannot broadcast yet.
 		if (get().driver?.verification_status !== 'approved') {
@@ -467,7 +467,7 @@ export const useStore = create((set, get) => ({
 		}
 
 		const position = await currentFix()
-		const trip = await api.startTrip(destination, { routeId, position, destCoords })
+		const trip = await api.startTrip(destination, { routeId, position, destCoords, via })
 		set({ trip, isBroadcasting: true })
 		await get().beginBroadcast(trip.id)
 		return trip
@@ -478,12 +478,12 @@ export const useStore = create((set, get) => ({
 	 * vehicle's live position, so the drawn line re-routes the way a
 	 * navigation app would — the run itself keeps going.
 	 */
-	rerouteTrip: async (destination, { routeId, destCoords } = {}) => {
+	rerouteTrip: async (destination, { routeId, destCoords, via } = {}) => {
 		const trip = get().trip
 		if (!trip) return null
 
 		const position = await currentFix()
-		const updated = await api.rerouteTrip(trip.id, destination, { routeId, position, destCoords })
+		const updated = await api.rerouteTrip(trip.id, destination, { routeId, position, destCoords, via })
 		set({ trip: updated })
 		get().showToast(getCopy().startTrip.rerouted)
 		return updated

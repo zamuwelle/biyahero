@@ -42,6 +42,14 @@ class TripController extends Controller
             // A destination pinned on the map instead of typed.
             'dest_lat' => 'nullable|numeric|between:-90,90',
             'dest_lng' => 'nullable|numeric|between:-180,180',
+            // Roads the driver says they actually take. A jeepney route is
+            // defined by the roads it uses, not by its endpoints — without
+            // these, two jeepneys running the same pair of towns by different
+            // highways get the same drawn corridor, and the commuter on the
+            // road one of them skips is wrongly told it passes them.
+            'via' => 'nullable|array|max:8',
+            'via.*.lat' => 'required|numeric|between:-90,90',
+            'via.*.lng' => 'required|numeric|between:-180,180',
         ]);
 
         $driver = $request->user();
@@ -64,6 +72,7 @@ class TripController extends Controller
             isset($validated['dest_lng']) ? (float) $validated['dest_lng'] : null,
             isset($validated['lat']) ? (float) $validated['lat'] : null,
             isset($validated['lng']) ? (float) $validated['lng'] : null,
+            $validated['via'] ?? [],
         );
 
         if (! $resolved) {
@@ -108,6 +117,14 @@ class TripController extends Controller
             'lng' => 'nullable|numeric|between:-180,180',
             'dest_lat' => 'nullable|numeric|between:-90,90',
             'dest_lng' => 'nullable|numeric|between:-180,180',
+            // Roads the driver says they actually take. A jeepney route is
+            // defined by the roads it uses, not by its endpoints — without
+            // these, two jeepneys running the same pair of towns by different
+            // highways get the same drawn corridor, and the commuter on the
+            // road one of them skips is wrongly told it passes them.
+            'via' => 'nullable|array|max:8',
+            'via.*.lat' => 'required|numeric|between:-90,90',
+            'via.*.lng' => 'required|numeric|between:-180,180',
         ]);
 
         $vehicle = $trip->vehicle;
@@ -119,6 +136,7 @@ class TripController extends Controller
             isset($validated['dest_lng']) ? (float) $validated['dest_lng'] : null,
             isset($validated['lat']) ? (float) $validated['lat'] : ($vehicle->live_lat !== null ? (float) $vehicle->live_lat : null),
             isset($validated['lng']) ? (float) $validated['lng'] : ($vehicle->live_lng !== null ? (float) $vehicle->live_lng : null),
+            $validated['via'] ?? [],
         );
 
         if (! $resolved) {
