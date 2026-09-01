@@ -13,6 +13,7 @@ import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
 import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession } from '@/services/api'
 import { MatchedText } from '@/components/MatchedText'
+import { placeLabel } from '@/services/geo'
 import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -318,7 +319,7 @@ export default function StartTrip() {
 		// Named on the device, so it costs no request and no rate limit. It is
 		// only a label — the coordinate is what shapes the route.
 		const [place] = await Location.reverseGeocodeAsync(point).catch(() => [])
-		const name = place?.name ?? place?.street ?? place?.district ?? null
+		const name = placeLabel(place)
 		if (name) {
 			setVia(list => list.map(p => (p === point ? { ...p, name } : p)))
 		}
