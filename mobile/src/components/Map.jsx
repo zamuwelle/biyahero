@@ -80,8 +80,16 @@ const VehiclePin = memo(({ vehicle, selected, onSelect }) => {
 				{
 					borderColor: vehicle.stale ? theme.border.strong : theme.route[1],
 					borderStyle: vehicle.stale ? 'dashed' : 'solid',
-					backgroundColor: selected ? theme.brand.default : theme.surface.default,
-					opacity: vehicle.stale ? 0.75 : 1
+					// Sunken, not see-through. Opacity let the map and the route
+					// line show straight through a stale pin, which read as a
+					// smudge rather than as "last known position" — the dashed
+					// border and muted glyph already carry that meaning, and
+					// they only work if the badge behind them stays solid.
+					backgroundColor: selected
+						? theme.brand.default
+						: vehicle.stale
+							? theme.surface.sunken
+							: theme.surface.default
 				}
 			]}
 			className="h-11 w-11 items-center justify-center rounded-md border-2"

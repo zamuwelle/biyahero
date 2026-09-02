@@ -690,20 +690,18 @@ export default function StartTrip() {
 						</Txt>
 					)}
 
-					<Pressable
+					{/* A real button, not a bordered row. These open a whole map
+					    screen — the same weight of action as starting the trip —
+					    and dressed as list items nobody read them as tappable. */}
+					<Button
+						tone="secondary"
+						icon={pinned ? 'check-circle' : 'place'}
+						label={copy.startTrip.pickOnMap}
 						onPress={() => {
 							setPickPoint(pinned ?? null)
 							setPicking(true)
 						}}
-						accessibilityRole="button"
-						className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-3 active:opacity-80"
-					>
-						<MaterialIcons name="place" size={22} color={pinned ? theme.route[1] : theme.icon.secondary} />
-						<Txt variant="bodyMStrong" className={pinned ? '' : 'text-fg-secondary'}>
-							{copy.startTrip.pickOnMap}
-						</Txt>
-						{!!pinned && <MaterialIcons name="check-circle" size={18} color={theme.text.success} />}
-					</Pressable>
+					/>
 
 					{/* Its own way to declare a trip, not an add-on to the
 					    destination search — the drawn line decides where the trip
@@ -736,16 +734,12 @@ export default function StartTrip() {
 								</View>
 							))}
 
-							<Pressable
+							<Button
+								tone="secondary"
+								icon={via.length ? 'edit' : 'route'}
+								label={via.length ? copy.startTrip.drawEdit : copy.startTrip.drawOpen}
 								onPress={openDrawing}
-								accessibilityRole="button"
-								className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-dashed border-line-subtle p-3 active:opacity-80"
-							>
-								<MaterialIcons name={via.length ? 'edit' : 'route'} size={22} color={theme.icon.secondary} />
-								<Txt variant="bodyMStrong" className="text-fg-secondary">
-									{via.length ? copy.startTrip.drawEdit : copy.startTrip.drawOpen}
-								</Txt>
-							</Pressable>
+							/>
 						</View>
 					)}
 
