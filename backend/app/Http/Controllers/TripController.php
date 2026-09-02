@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Trip;
 use App\Models\User;
+use App\Services\RouteGeometry;
 use App\Services\TripRouteResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,10 @@ use Illuminate\Http\Request;
  */
 class TripController extends Controller
 {
-    public function __construct(protected TripRouteResolver $resolver) {}
+    public function __construct(
+        protected TripRouteResolver $resolver,
+        protected RouteGeometry $geometry,
+    ) {}
 
     /** The driver's current run, if any. */
     public function current(Request $request): JsonResponse
@@ -100,6 +104,41 @@ class TripController extends Controller
      * vehicle IS RIGHT NOW — the drawn line re-routes like a navigation app —
      * while the run itself (start time, distance so far) is preserved.
      */
+    /**
+     * What the roads make of the line the driver drew, before they commit to it.
+     *
+     * A tap lands on whatever road is nearest, and near an expressway that is
+     * the expressway — which a jeepney may not legally use and which OSRM can
+     * only enter and leave at an interchange. Three points spanning 4 km came
+     * back as a 25 km route with hooks at both ends. The driver could not see
+     * that until the trip had already started, so this hands back the snapped
+     * line and lets them look before they go.
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'points' => 'required|array|min:2|max:10',
+            'points.*.lat' => 'required|numeric|between:-90,90',
+            'points.*.lng' => 'required|numeric|between:-180,180',
+        ]);
+
+        $points = array_map(fn (array $p) => [
+            'lat' => (float) $p['lat'],
+            'lng' => (float) $p['lng'],
+        ], $validated['points']);
+
+        $snapped = $this->geometry->snapToRoads($points);
+
+        return response()->json(['data' => [
+            'waypoints' => $snapped['waypoints'],
+            'length_km' => $snapped['length_km'],
+            'road_matched' => $snapped['matched'],
+            // What the driver drew, so the app can say when the roads disagree
+            // with them by an unreasonable margin.
+            'drawn_km' => round($this->geometry->straightLineKm($points), 2),
+        ]]);
+    }
+
     public function reroute(Request $request, Trip $trip): JsonResponse
     {
         $this->authorizeTrip($request, $trip);

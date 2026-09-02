@@ -240,6 +240,30 @@ export const resolvePlace = (placeId, session) =>
 		})
 
 /** The driver's own last few routes — one tap to run the same line again. */
+/**
+ * What the roads make of the line the driver drew.
+ *
+ * A tap lands on the nearest road, and near an expressway that is the
+ * expressway — one a jeepney may not use and that can only be joined at an
+ * interchange. Showing the snapped line before the trip starts is the only way
+ * the driver finds out while they can still move a point.
+ */
+export const previewRoute = points =>
+	client
+		.post('/routes/preview', { points: points.map(p => ({ lat: p.latitude, lng: p.longitude })) })
+		.then(res => {
+			const d = res.data?.data
+
+			return d
+				? {
+					waypoints: (d.waypoints ?? []).map(w => ({ latitude: Number(w.lat), longitude: Number(w.lng) })),
+					lengthKm: Number(d.length_km),
+					drawnKm: Number(d.drawn_km),
+					roadMatched: !!d.road_matched
+				}
+				: null
+		})
+
 export const fetchRecentRoutes = () =>
 	client.get('/routes/recent').then(res =>
 		(res.data?.data ?? []).map(r => ({

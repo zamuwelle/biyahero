@@ -280,6 +280,10 @@ export const startTrip = {
 	drawHint: 'Starting from where you are, tap the roads you drive through in order. Your last tap is where the trip ends.',
 	drawEmpty: 'Tap the map to start.',
 	drawYouAreHere: 'You are here',
+	previewDrawn: 'This is what you traced. It follows the real roads once the trip starts.',
+	previewSnapped: km => `~${km} km on real roads`,
+	previewDetour: (road, drawn) =>
+		`The road route is ${road} km but you only traced ${drawn} km. A point may have landed on an expressway or a one-way — try moving it.`,
 	drawNeedsLocation: 'Turn on location first. Your route starts from where you are.',
 	drawCount: n => (n === 1 ? '1 point' : `${n} points`),
 	drawUndo: 'Undo',

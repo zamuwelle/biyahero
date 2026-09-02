@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
-import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession } from '@/services/api'
+import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession, previewRoute } from '@/services/api'
 import { MatchedText } from '@/components/MatchedText'
 import { placeLabel } from '@/services/geo'
 import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
@@ -45,6 +45,25 @@ const matchesQuery = (place, query) => {
  * map, and an unknown town gets a brand-new road-snapped route built from
  * where the driver is standing.
  */
+/**
+ * The driver, on any of the maps in this flow.
+ *
+ * Drawn from the fix the app actually holds — not the OS blue dot — because
+ * this is the point the route is built from, and showing a different one would
+ * be a lie the driver could not spot.
+ */
+const YouAreHere = ({ at }) =>
+	at ? (
+		<Marker coordinate={at} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true}>
+			<View
+				collapsable={false}
+				style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(26,115,232,0.18)' }}
+			>
+				<View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#1A73E8', borderWidth: 2, borderColor: '#FFFFFF' }} />
+			</View>
+		</Marker>
+	) : null
+
 export default function StartTrip() {
 	const copy = useCopy()
 	const { theme, scheme } = useTheme()
@@ -68,6 +87,9 @@ export default function StartTrip() {
 	// `via` until confirmed so backing out leaves the old route alone.
 	const [drawing, setDrawing] = useState(false)
 	const [draft, setDraft] = useState([])
+	// What the roads make of the drawn line — fetched so the driver sees it
+	// while they can still move a point.
+	const [snapped, setSnapped] = useState(null)
 	const [pickPoint, setPickPoint] = useState(null)
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
@@ -393,6 +415,33 @@ export default function StartTrip() {
 		setDestination(name)
 	}
 
+	// Driver, the roads they traced, then where it ends — the same order the
+	// server builds the real route from, so the preview is the same shape.
+	const drawnPreview = [position, ...via, pinned].filter(Boolean)
+	const drawnKey = drawnPreview.map(p => `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`).join('|')
+
+	// Ask the roads what they make of it. Straight lines between taps hide the
+	// thing that actually bites: a point landing on an expressway turns 4 km of
+	// drawing into a 25 km route, and the driver only found out mid-trip.
+	useEffect(() => {
+		if (route || drawnPreview.length < 2) return setSnapped(null)
+
+		let cancelled = false
+		const timer = setTimeout(() => {
+			previewRoute(drawnPreview)
+				.then(result => !cancelled && setSnapped(result))
+				// No preview is a smaller loss than a blocked screen; the server
+				// snaps it properly when the trip starts either way.
+				.catch(() => !cancelled && setSnapped(null))
+		}, 400)
+
+		return () => {
+			cancelled = true
+			clearTimeout(timer)
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [drawnKey, route])
+
 	const begin = async () => {
 		const name = destination.trim()
 		if (!name) return showToast(copy.startTrip.needDestination)
@@ -463,16 +512,7 @@ export default function StartTrip() {
 						<Polyline coordinates={draft} strokeColor={theme.route[1]} strokeWidth={5} />
 					)}
 
-					{!!position && (
-						<Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} title={copy.startTrip.drawYouAreHere}>
-							<View
-								collapsable={false}
-								style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(26,115,232,0.18)' }}
-							>
-								<View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#1A73E8', borderWidth: 2, borderColor: '#FFFFFF' }} />
-							</View>
-						</Marker>
-					)}
+					<YouAreHere at={position} />
 
 					{draft.map((point, index) => (
 						<Marker
@@ -550,6 +590,8 @@ export default function StartTrip() {
 					toolbarEnabled={false}
 					rotateEnabled={false}
 				>
+					<YouAreHere at={position} />
+
 					{!!pickPoint && (
 						<Marker coordinate={pickPoint} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={true}>
 							<View collapsable={false} style={{ width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }}>
@@ -720,10 +762,37 @@ export default function StartTrip() {
 						</View>
 					)}
 
+					{/* A searched destination resolves to a real corridor and gets
+					    the server's own line. A traced or pinned one has no route
+					    until the trip starts, so the preview is built from what
+					    the driver put on the map — the shape is theirs either
+					    way, and showing nothing was the worse answer. */}
+					{!route && drawnPreview.length > 1 && (
+						<View className="gap-3">
+							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.previewLabel}</Txt>
+							<RoutePreview waypoints={snapped?.waypoints?.length > 1 ? snapped.waypoints : drawnPreview} here={position} />
+							<Txt variant="caption" className="text-fg-secondary">
+								{snapped ? copy.startTrip.previewSnapped(snapped.lengthKm) : copy.startTrip.previewDrawn}
+							</Txt>
+
+							{/* The roads went somewhere the driver plainly did not
+							    mean. Saying so now costs one line; finding out
+							    mid-trip costs them the run. */}
+							{!!snapped && snapped.drawnKm > 0 && snapped.lengthKm / snapped.drawnKm > 2.5 && (
+								<View className="flex-row items-start gap-3 rounded-lg bg-capacity-stale-bg p-3">
+									<MaterialIcons name="alt-route" size={18} color={theme.capacity.stale.fg} />
+									<Txt variant="caption" className="min-w-0 flex-1 text-capacity-stale-fg">
+										{copy.startTrip.previewDetour(snapped.lengthKm, snapped.drawnKm)}
+									</Txt>
+								</View>
+							)}
+						</View>
+					)}
+
 					{!!route && (
 						<View className="gap-3">
 							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.previewLabel}</Txt>
-							<RoutePreview waypoints={route.waypoints} />
+							<RoutePreview waypoints={route.waypoints} here={position} />
 							<Txt variant="caption" className="text-fg-secondary">
 								{eta ? copy.startTrip.preview(route.length_km, eta) : `~${route.length_km} km`}
 							</Txt>

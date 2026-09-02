@@ -334,6 +334,10 @@ export const startTrip = {
 	drawHint: 'Mula sa kinaroroonan mo, sunod-sunod na i-tap ang mga kalsadang dinadaanan mo. Ang huling i-tap mo ang punta ng biyahe.',
 	drawEmpty: 'I-tap ang mapa para simulan.',
 	drawYouAreHere: 'Nandito ka',
+	previewDrawn: 'Ito ang iginuhit mo. Susundan nito ang tunay na kalsada kapag sinimulan mo na ang biyahe.',
+	previewSnapped: km => `~${km} km sa tunay na kalsada`,
+	previewDetour: (road, drawn) =>
+		`${road} km ang ruta sa kalsada, pero ${drawn} km lang ang iginuhit mo. Baka may puntong tumapat sa expressway o one-way — subukang ilipat.`,
 	drawNeedsLocation: 'Buksan muna ang location. Doon magsisimula ang ruta mo.',
 	drawCount: n => (n === 1 ? '1 punto' : `${n} punto`),
 	drawUndo: 'Bawiin',

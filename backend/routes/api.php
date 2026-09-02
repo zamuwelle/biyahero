@@ -120,6 +120,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // somebody else's budget to burn.
     Route::get('/places/resolve', [PlaceController::class, 'resolve'])->middleware('throttle:60,1');
     Route::get('/routes/recent', [TripController::class, 'recentRoutes']);
+    // What the roads make of a line the driver drew, before they commit to it.
+    // Throttled: it costs an OSRM round trip, and it is called while drawing.
+    Route::post('/routes/preview', [TripController::class, 'preview'])->middleware('throttle:30,1');
 
     // Driver-facing: which routes pass near where I am standing? Lives behind
     // auth on purpose — no commuter-side code may ever send a position.
