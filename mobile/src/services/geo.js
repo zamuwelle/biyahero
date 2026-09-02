@@ -56,6 +56,20 @@ const nearestSegment = (p, pts) => {
  * destination can sit mid-corridor nearer the "wrong" end, and an
  * endpoint-only check then reverses the line and collapses it to nothing.
  */
+/**
+ * A name a person would recognise, out of what reverseGeocodeAsync returns.
+ *
+ * `place.name` is a Plus Code ("HMPG+JFM") whenever the OS has no street for
+ * the spot, which is worse than saying nothing — so a real street or district
+ * is preferred and a code is dropped entirely. Street first: these label
+ * ROADS, and a driver names the road, not the barangay it sits in.
+ */
+const isPlusCode = value => /^[A-Z0-9]{4,8}\+[A-Z0-9]{2,4}$/i.test(value ?? '')
+
+export const placeLabel = place =>
+	[place?.street, place?.district, place?.subregion, place?.city, place?.name]
+		.find(value => value && !isPlusCode(value)) ?? null
+
 export const remainingRoute = (position, waypoints, target = null) => {
 	if (!waypoints?.length) return waypoints ?? []
 

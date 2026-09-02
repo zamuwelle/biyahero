@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler, Keyboard } from 'react-native'
 import { useRouter } from 'expo-router'
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
 import { Screen } from '@/components/ui/Screen'
@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/SearchBar'
 import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
-import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession } from '@/services/api'
+import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession, previewRoute } from '@/services/api'
 import { MatchedText } from '@/components/MatchedText'
+import { LocateButton } from '@/components/LocateButton'
+import { placeLabel } from '@/services/geo'
 import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
 import { useCopy } from '@/constants/copy'
@@ -44,6 +46,25 @@ const matchesQuery = (place, query) => {
  * map, and an unknown town gets a brand-new road-snapped route built from
  * where the driver is standing.
  */
+/**
+ * The driver, on any of the maps in this flow.
+ *
+ * Drawn from the fix the app actually holds — not the OS blue dot — because
+ * this is the point the route is built from, and showing a different one would
+ * be a lie the driver could not spot.
+ */
+const YouAreHere = ({ at }) =>
+	at ? (
+		<Marker coordinate={at} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true}>
+			<View
+				collapsable={false}
+				style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(26,115,232,0.18)' }}
+			>
+				<View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#1A73E8', borderWidth: 2, borderColor: '#FFFFFF' }} />
+			</View>
+		</Marker>
+	) : null
+
 export default function StartTrip() {
 	const copy = useCopy()
 	const { theme, scheme } = useTheme()
@@ -62,6 +83,21 @@ export default function StartTrip() {
 	const [selectedRouteId, setSelectedRouteId] = useState(null)
 	const [pinned, setPinned] = useState(null)
 	const [picking, setPicking] = useState(false)
+	const [via, setVia] = useState([])
+	// Tracing the route: a whole shape drawn in one sitting, kept apart from
+	// `via` until confirmed so backing out leaves the old route alone.
+	const [drawing, setDrawing] = useState(false)
+	const [draft, setDraft] = useState([])
+	// What the roads make of the drawn line — fetched so the driver sees it
+	// while they can still move a point.
+	const [snapped, setSnapped] = useState(null)
+	const drawMapRef = useRef(null)
+	const pickMapRef = useRef(null)
+
+	/** Both bare maps recentre the same way: on the fix the route uses. */
+	const recentre = ref => () => {
+		if (position) ref.current?.animateCamera({ center: position, zoom: 15 }, { duration: 600 })
+	}
 	const [pickPoint, setPickPoint] = useState(null)
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
@@ -305,8 +341,69 @@ export default function StartTrip() {
 		Keyboard.dismiss()
 	}
 
+	/**
+	 * A traced route begins at the driver. Without a fix there is no first
+	 * point to join, so this refuses up front rather than letting them draw a
+	 * whole route and fail at the last button.
+	 */
+	const openDrawing = async () => {
+		const servicesOn = await Location.hasServicesEnabledAsync().catch(() => false)
+		const granted = servicesOn && (await Location.requestForegroundPermissionsAsync()).status === 'granted'
+
+		if (!granted) return showToast(copy.startTrip.drawNeedsLocation)
+
+		setDraft(via)
+		setDrawing(true)
+	}
+
+	/**
+	 * The end of the line is where the trip goes.
+	 *
+	 * A drawn route does not hang off a destination the driver searched for —
+	 * it IS the trip. So the last point becomes the destination, the ones
+	 * before it become the roads, and the name is proposed from the map and
+	 * left in the destination field for the driver to correct. Commuters
+	 * search that name, so it has to be theirs to fix.
+	 */
+	const confirmDrawing = async () => {
+		const points = draft
+		if (points.length === 0) return
+
+		const token = ++chosenRef.current
+		const target = points[points.length - 1]
+		const roads = points.slice(0, -1)
+
+		setVia(roads)
+		setPinned(target)
+		setPickedKnown(false)
+		setSelectedRouteId(null)
+		setSuggestions([])
+		setDrawing(false)
+
+		// Named on the device, so it costs no request and no rate limit.
+		const [place] = await Location.reverseGeocodeAsync(target).catch(() => [])
+		if (chosenRef.current !== token) return
+
+		const name = placeLabel(place) ?? copy.startTrip.pinnedFallback
+		// Claim the text as a made choice, or the type-ahead treats the name we
+		// just wrote as fresh typing and re-opens the list over it.
+		chosenTextRef.current = name
+		setDestination(name)
+
+		const named = await Promise.all(
+			roads.map(async road => {
+				const [spot] = await Location.reverseGeocodeAsync(road).catch(() => [])
+
+				return { ...road, name: placeLabel(spot) ?? undefined }
+			})
+		)
+
+		setVia(current => (current === roads ? named : current))
+	}
+
 	const confirmPin = async () => {
 		if (!pickPoint) return
+
 		const token = ++chosenRef.current
 		setPicking(false)
 		setPinned(pickPoint)
@@ -326,6 +423,33 @@ export default function StartTrip() {
 		setDestination(name)
 	}
 
+	// Driver, the roads they traced, then where it ends — the same order the
+	// server builds the real route from, so the preview is the same shape.
+	const drawnPreview = [position, ...via, pinned].filter(Boolean)
+	const drawnKey = drawnPreview.map(p => `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`).join('|')
+
+	// Ask the roads what they make of it. Straight lines between taps hide the
+	// thing that actually bites: a point landing on an expressway turns 4 km of
+	// drawing into a 25 km route, and the driver only found out mid-trip.
+	useEffect(() => {
+		if (route || drawnPreview.length < 2) return setSnapped(null)
+
+		let cancelled = false
+		const timer = setTimeout(() => {
+			previewRoute(drawnPreview)
+				.then(result => !cancelled && setSnapped(result))
+				// No preview is a smaller loss than a blocked screen; the server
+				// snaps it properly when the trip starts either way.
+				.catch(() => !cancelled && setSnapped(null))
+		}, 400)
+
+		return () => {
+			cancelled = true
+			clearTimeout(timer)
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [drawnKey, route])
+
 	const begin = async () => {
 		const name = destination.trim()
 		if (!name) return showToast(copy.startTrip.needDestination)
@@ -334,7 +458,10 @@ export default function StartTrip() {
 		try {
 			const options = {
 				routeId: selectedRouteId ?? undefined,
-				destCoords: pinned ?? undefined
+				destCoords: pinned ?? undefined,
+				// Only meaningful for a route we are about to build: tapping a
+				// listed corridor already picked its roads.
+				via: selectedRouteId ? undefined : via
 			}
 			const rerouted = rerouting
 			const trip = rerouted ? await rerouteTrip(name, options) : await startTrip(name, options)
@@ -352,10 +479,116 @@ export default function StartTrip() {
 		}
 	}
 
+	/**
+	 * Trace the route.
+	 *
+	 * A jeepney route is a shape, not a pair of endpoints — so the driver draws
+	 * the one they actually run, tap by tap, in the order they drive it. The
+	 * line between taps is straight here; the server snaps it to real roads
+	 * when the trip starts, which is why a rough tap at each junction is enough.
+	 */
+	if (drawing) {
+		return (
+			<View className="flex-1 bg-surface-canvas">
+				<MapView
+					ref={drawMapRef}
+					provider={PROVIDER_GOOGLE}
+					style={{ flex: 1 }}
+					initialRegion={{
+						latitude: position?.latitude ?? 14.575,
+						longitude: position?.longitude ?? 121.0,
+						latitudeDelta: 0.08,
+						longitudeDelta: 0.08
+					}}
+					customMapStyle={MAP_STYLES_WITH_PLACES[scheme]}
+					onPress={e => {
+						// Read the coordinate NOW. React nulls the synthetic event
+						// before a functional state updater gets to run, so
+						// reaching into e.nativeEvent in there throws.
+						const point = e.nativeEvent.coordinate
+
+						setDraft(list => [...list, point])
+					}}
+					toolbarEnabled={false}
+					rotateEnabled={false}
+				>
+					{/* The route starts at the driver, so the line does too —
+					    otherwise the first tap looks unconnected to anything. */}
+					{!!position && draft.length > 0 && (
+						<Polyline coordinates={[position, ...draft]} strokeColor={theme.route[1]} strokeWidth={5} />
+					)}
+					{!position && draft.length > 1 && (
+						<Polyline coordinates={draft} strokeColor={theme.route[1]} strokeWidth={5} />
+					)}
+
+					<YouAreHere at={position} />
+
+					{draft.map((point, index) => (
+						<Marker
+							key={`${point.latitude},${point.longitude},${index}`}
+							coordinate={point}
+							anchor={{ x: 0.5, y: 0.5 }}
+							tracksViewChanges={true}
+						>
+							<View
+								collapsable={false}
+								style={{
+									width: 28,
+									height: 28,
+									borderRadius: 14,
+									alignItems: 'center',
+									justifyContent: 'center',
+									backgroundColor: theme.route[1],
+									borderWidth: 2,
+									borderColor: theme.surface.default
+								}}
+							>
+								<Txt variant="caption" style={{ fontSize: 11, color: theme.text.onBrand }}>{index + 1}</Txt>
+							</View>
+						</Marker>
+					))}
+				</MapView>
+
+				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="gap-1 rounded-lg bg-surface p-3">
+					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.drawHint}</Txt>
+					<Txt variant="caption" className="text-center text-fg-secondary">
+						{draft.length ? copy.startTrip.drawCount(draft.length) : copy.startTrip.drawEmpty}
+					</Txt>
+				</View>
+
+				<LocateButton onPress={recentre(drawMapRef)} style={{ position: 'absolute', right: 24, bottom: 250 }} />
+
+				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
+					<View className="flex-row gap-2">
+						<View className="flex-1">
+							<Button
+								label={copy.startTrip.drawUndo}
+								tone="secondary"
+								onPress={() => setDraft(list => list.slice(0, -1))}
+								disabled={draft.length === 0}
+							/>
+						</View>
+						<View className="flex-1">
+							<Button
+								label={copy.startTrip.drawClear}
+								tone="secondary"
+								onPress={() => setDraft([])}
+								disabled={draft.length === 0}
+							/>
+						</View>
+					</View>
+					<Button label={copy.startTrip.drawDone} onPress={confirmDrawing} disabled={draft.length === 0} />
+					<Button label={copy.common.cancel} tone="secondary" onPress={() => setDrawing(false)} />
+				</View>
+			</View>
+		)
+	}
+
 	if (picking) {
 		return (
 			<View className="flex-1 bg-surface-canvas">
 				<MapView
+					ref={pickMapRef}
 					provider={PROVIDER_GOOGLE}
 					style={{ flex: 1 }}
 					initialRegion={{
@@ -369,6 +602,8 @@ export default function StartTrip() {
 					toolbarEnabled={false}
 					rotateEnabled={false}
 				>
+					<YouAreHere at={position} />
+
 					{!!pickPoint && (
 						<Marker coordinate={pickPoint} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={true}>
 							<View collapsable={false} style={{ width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }}>
@@ -382,6 +617,8 @@ export default function StartTrip() {
 				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="rounded-lg bg-surface p-3">
 					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.pinHint}</Txt>
 				</View>
+
+				<LocateButton onPress={recentre(pickMapRef)} style={{ position: 'absolute', right: 24, bottom: 180 }} />
 
 				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
 					<Button label={copy.startTrip.pinUse} onPress={confirmPin} disabled={!pickPoint} />
@@ -453,20 +690,58 @@ export default function StartTrip() {
 						</Txt>
 					)}
 
-					<Pressable
+					{/* A real button, not a bordered row. These open a whole map
+					    screen — the same weight of action as starting the trip —
+					    and dressed as list items nobody read them as tappable. */}
+					<Button
+						tone="secondary"
+						icon={pinned ? 'check-circle' : 'place'}
+						label={copy.startTrip.pickOnMap}
 						onPress={() => {
 							setPickPoint(pinned ?? null)
 							setPicking(true)
 						}}
-						accessibilityRole="button"
-						className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-3 active:opacity-80"
-					>
-						<MaterialIcons name="place" size={22} color={pinned ? theme.route[1] : theme.icon.secondary} />
-						<Txt variant="bodyMStrong" className={pinned ? '' : 'text-fg-secondary'}>
-							{copy.startTrip.pickOnMap}
-						</Txt>
-						{!!pinned && <MaterialIcons name="check-circle" size={18} color={theme.text.success} />}
-					</Pressable>
+					/>
+
+					{/* Its own way to declare a trip, not an add-on to the
+					    destination search — the drawn line decides where the trip
+					    goes. Hidden only when a listed corridor is chosen, which
+					    already carries its own roads. */}
+					{!selectedRouteId && (
+						<View className="gap-3">
+							<View className="gap-[3px]">
+								<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.viaLabel}</Txt>
+								<Txt variant="caption" className="text-fg-secondary">{copy.startTrip.viaHint}</Txt>
+							</View>
+
+							{via.map((point, index) => (
+								<View
+									key={`${point.latitude},${point.longitude},${index}`}
+									className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-line-subtle bg-surface p-3"
+								>
+									<Txt variant="bodyMStrong" className="text-fg-secondary">{index + 1}</Txt>
+									<Txt variant="bodyM" numberOfLines={1} className="min-w-0 flex-1">
+										{point.name ?? copy.startTrip.viaPinned}
+									</Txt>
+									<Pressable
+										onPress={() => setVia(list => list.filter((_, at) => at !== index))}
+										accessibilityRole="button"
+										accessibilityLabel={copy.startTrip.viaRemove}
+										hitSlop={10}
+									>
+										<MaterialIcons name="close" size={20} color={theme.icon.secondary} />
+									</Pressable>
+								</View>
+							))}
+
+							<Button
+								tone="secondary"
+								icon={via.length ? 'edit' : 'route'}
+								label={via.length ? copy.startTrip.drawEdit : copy.startTrip.drawOpen}
+								onPress={openDrawing}
+							/>
+						</View>
+					)}
 
 					{routeShortcuts.length > 0 && (
 						<View className="gap-3">
@@ -495,10 +770,37 @@ export default function StartTrip() {
 						</View>
 					)}
 
+					{/* A searched destination resolves to a real corridor and gets
+					    the server's own line. A traced or pinned one has no route
+					    until the trip starts, so the preview is built from what
+					    the driver put on the map — the shape is theirs either
+					    way, and showing nothing was the worse answer. */}
+					{!route && drawnPreview.length > 1 && (
+						<View className="gap-3">
+							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.previewLabel}</Txt>
+							<RoutePreview waypoints={snapped?.waypoints?.length > 1 ? snapped.waypoints : drawnPreview} here={position} />
+							<Txt variant="caption" className="text-fg-secondary">
+								{snapped ? copy.startTrip.previewSnapped(snapped.lengthKm) : copy.startTrip.previewDrawn}
+							</Txt>
+
+							{/* The roads went somewhere the driver plainly did not
+							    mean. Saying so now costs one line; finding out
+							    mid-trip costs them the run. */}
+							{!!snapped && snapped.drawnKm > 0 && snapped.lengthKm / snapped.drawnKm > 2.5 && (
+								<View className="flex-row items-start gap-3 rounded-lg bg-capacity-stale-bg p-3">
+									<MaterialIcons name="alt-route" size={18} color={theme.capacity.stale.fg} />
+									<Txt variant="caption" className="min-w-0 flex-1 text-capacity-stale-fg">
+										{copy.startTrip.previewDetour(snapped.lengthKm, snapped.drawnKm)}
+									</Txt>
+								</View>
+							)}
+						</View>
+					)}
+
 					{!!route && (
 						<View className="gap-3">
 							<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.previewLabel}</Txt>
-							<RoutePreview waypoints={route.waypoints} />
+							<RoutePreview waypoints={route.waypoints} here={position} />
 							<Txt variant="caption" className="text-fg-secondary">
 								{eta ? copy.startTrip.preview(route.length_km, eta) : `~${route.length_km} km`}
 							</Txt>

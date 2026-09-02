@@ -28,6 +28,13 @@ const EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
  * The photo uploads to a private disk and is retained so a person can revoke a
  * driver afterwards with `php artisan biyahero:review {licence} --revoke`.
  */
+/**
+ * Wide enough that the licence number stays readable when a reviewer opens the
+ * photo, narrow enough that the file clears the server's upload ceiling with
+ * room to spare.
+ */
+const FRAME_MIN_PX = 1280
+
 export default function LicenceCapture() {
 	const copy = useCopy()
 	const { theme } = useTheme()
@@ -41,6 +48,8 @@ export default function LicenceCapture() {
 	const showToast = useStore(s => s.showToast)
 
 	const cameraRef = useRef(null)
+	// Chosen from what the device actually offers, once the camera is ready.
+	const [pictureSize, setPictureSize] = useState(undefined)
 	const [permission, requestPermission] = useCameraPermissions()
 	const [capturing, setCapturing] = useState(false)
 	// Which FIELD the message belongs to — a single slot pinned every error
@@ -48,14 +57,42 @@ export default function LicenceCapture() {
 	const [error, setError] = useState(null)
 	const [errorField, setErrorField] = useState('name')
 
+	/**
+	 * Cap the capture resolution to something a licence card is legible at.
+	 *
+	 * A modern phone shoots 50 MP by default, which lands well past the
+	 * server's 2 MB upload ceiling — and a driver on mobile data pays for every
+	 * one of those megabytes. The smallest size at least FRAME_MIN_PX wide
+	 * keeps the card readable and the file small; if the device will not say
+	 * what it supports, leaving this unset is no worse than before.
+	 */
+	const choosePictureSize = async () => {
+		try {
+			const sizes = await cameraRef.current?.getAvailablePictureSizesAsync?.()
+			if (!sizes?.length) return
+
+			const widthOf = size => Number(String(size).split(/[x*]/)[0]) || 0
+			const usable = sizes
+				.filter(size => widthOf(size) >= FRAME_MIN_PX)
+				.sort((a, b) => widthOf(a) - widthOf(b))
+
+			setPictureSize(usable[0] ?? sizes[sizes.length - 1])
+		} catch {
+			// Leave it to the device default rather than fail the whole screen.
+		}
+	}
+
 	const capture = async () => {
 		if (!cameraRef.current || capturing) return
 		setCapturing(true)
 
 		try {
-			// Modest quality: a licence card is legible well below full sensor
-			// resolution, and this has to upload over mobile data.
-			const photo = await cameraRef.current.takePictureAsync({ quality: 0.6, skipProcessing: true })
+			// No skipProcessing. It discards `quality` outright — the whole
+			// processing pipeline is skipped — so the old call captured at full
+			// sensor size and a 2.7 MB photo came back from the server as "the
+			// license photo failed to upload". It also returns the image without
+			// EXIF orientation applied, which is why cards came out sideways.
+			const photo = await cameraRef.current.takePictureAsync({ quality: 0.6 })
 			if (photo?.uri) update({ licencePhotoUri: photo.uri })
 		} catch {
 			showToast(copy.common.genericError)
@@ -125,7 +162,13 @@ export default function LicenceCapture() {
 								<Button label={copy.licence.grant} tone="secondary" onPress={requestPermission} />
 							</View>
 						) : (
-							<CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
+							<CameraView
+								ref={cameraRef}
+								style={{ flex: 1 }}
+								facing="back"
+								pictureSize={pictureSize}
+								onCameraReady={choosePictureSize}
+							>
 								<View className="flex-1 items-center justify-end p-4">
 									<View className="rounded-full bg-surface-inverse/70 px-3 py-1">
 										<Txt variant="caption" className="text-fg-inverse">{copy.licence.frameHint}</Txt>

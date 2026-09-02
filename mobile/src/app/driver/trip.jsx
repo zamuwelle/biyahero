@@ -8,6 +8,7 @@ import { Sheet } from '@/components/ui/Sheet'
 import { Txt } from '@/components/ui/Txt'
 import { Button } from '@/components/ui/Button'
 import { CapacityPicker } from '@/components/CapacityPicker'
+import { LocateButton } from '@/components/LocateButton'
 import { useStore } from '@/services/store'
 import { remainingRoute } from '@/services/geo'
 import { elevation } from '@/theme/tokens'
@@ -33,6 +34,7 @@ export default function ActiveTrip() {
 	const broadcastPosition = useStore(s => s.broadcastPosition)
 
 	const [elapsed, setElapsed] = useState(0)
+	const [locateNonce, setLocateNonce] = useState(0)
 
 	useEffect(() => {
 		if (!trip?.started_at) return
@@ -78,6 +80,9 @@ export default function ActiveTrip() {
 				fitTo={waypoints}
 				fitKey={trip.route?.id ?? trip.id}
 				selfVehicle={{ position: broadcastPosition, vehicle_type: driver?.vehicle?.vehicle_type ?? 'jeepney' }}
+				locateNonce={locateNonce}
+				controls={<LocateButton onPress={() => setLocateNonce(n => n + 1)} />}
+				controlsBottom={410}
 			/>
 
 			<View

@@ -73,7 +73,8 @@ class RouteGeometry
     }
 
     /** @param array<array{lat: float, lng: float}> $points */
-    private function straightLineKm(array $points): float
+    /** Crow-flies length of a set of points, in the order given. */
+    public function straightLineKm(array $points): float
     {
         $total = 0.0;
 

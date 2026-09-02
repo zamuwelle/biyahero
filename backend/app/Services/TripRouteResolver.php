@@ -20,6 +20,14 @@ class TripRouteResolver
     /** A route must pass this close to the DRIVER to be reused as-is. */
     public const DRIVER_RADIUS_M = 800;
 
+    /**
+     * How far a hand-placed road may sit from one already stored and still
+     * count as the same route. A driver taps a junction roughly, from a moving
+     * jeepney; an exact match would never fire and every run would mint a new
+     * near-identical route.
+     */
+    private const SAME_ROUTE_RADIUS_M = 250;
+
     public function __construct(
         protected CorridorMatcher $corridor,
         protected RouteGeometry $geometry,
@@ -29,6 +37,14 @@ class TripRouteResolver
     /**
      * @return array{route: Route, destination: string, target: array{lat: float, lng: float}|null}|null
      */
+    /**
+     * @param  array<array{lat: float, lng: float, name?: string}>  $via
+     *                                                                    Roads the driver says they actually take on the way. A jeepney route
+     *                                                                    is defined by the roads it uses, not by its endpoints — two jeepneys
+     *                                                                    running Victoria to Tarlac by different highways are different routes,
+     *                                                                    and a commuter on the road one of them skips must not be told it
+     *                                                                    passes them.
+     */
     public function resolve(
         ?int $routeId,
         string $destinationText,
@@ -36,6 +52,7 @@ class TripRouteResolver
         ?float $destLng,
         ?float $driverLat,
         ?float $driverLng,
+        array $via = [],
     ): ?array {
         // An explicit route id is the driver tapping a listed route — honour it.
         // Its precise target is the route's far end.
@@ -70,12 +87,22 @@ class TripRouteResolver
 
         $point = ['lat' => $target['lat'], 'lng' => $target['lng']];
 
-        if ($route = $this->reusableRoute($target, $driverLat, $driverLng)) {
+        // Only when the driver has NOT said which roads they take. Handing
+        // them a corridor that happens to end in the right town would throw
+        // away the one thing they just told us.
+        if ($via === [] && $route = $this->reusableRoute($target, $driverLat, $driverLng)) {
+            return ['route' => $route, 'destination' => $target['name'], 'target' => $point];
+        }
+
+        // The same driver runs the same custom route every day. Matching it
+        // back to one already built keeps a stable corridor for commuters to
+        // search against, instead of a fresh near-identical row per trip.
+        if ($via !== [] && $route = $this->matchingCustomRoute($driverLat, $driverLng, $target, $via)) {
             return ['route' => $route, 'destination' => $target['name'], 'target' => $point];
         }
 
         return [
-            'route' => $this->createRoute($driverLat, $driverLng, $target),
+            'route' => $this->createRoute($driverLat, $driverLng, $target, $via),
             'destination' => $target['name'],
             'target' => $point,
         ];
@@ -134,6 +161,61 @@ class TripRouteResolver
      *
      * @param  array{lat: float, lng: float, name: string}  $target
      */
+    /**
+     * Driver, every road they named, then the destination — in that order,
+     * which is the order they are driven.
+     *
+     * @param  array{lat: float, lng: float, name?: string}  $target
+     * @param  array<array{lat: float, lng: float, name?: string}>  $via
+     * @return array<array{lat: float, lng: float}>
+     */
+    private static function controlPoints(float $driverLat, float $driverLng, array $target, array $via): array
+    {
+        return [
+            ['lat' => $driverLat, 'lng' => $driverLng],
+            ...array_map(fn (array $point) => [
+                'lat' => (float) $point['lat'],
+                'lng' => (float) $point['lng'],
+            ], $via),
+            ['lat' => (float) $target['lat'], 'lng' => (float) $target['lng']],
+        ];
+    }
+
+    /**
+     * A route already built from the same hand-placed roads.
+     *
+     * Same count, and every point within a block of the one before it. The
+     * driver taps roughly, not precisely, so an exact coordinate match would
+     * never fire and every run would mint another route.
+     *
+     * @param  array{lat: float, lng: float, name?: string}  $target
+     * @param  array<array{lat: float, lng: float, name?: string}>  $via
+     */
+    private function matchingCustomRoute(float $driverLat, float $driverLng, array $target, array $via): ?Route
+    {
+        $wanted = self::controlPoints($driverLat, $driverLng, $target, $via);
+
+        return Route::query()
+            ->whereNotNull('control_points')
+            ->get()
+            ->first(function (Route $route) use ($wanted) {
+                $have = $route->control_points ?? [];
+                if (count($have) !== count($wanted)) {
+                    return false;
+                }
+
+                foreach ($wanted as $i => $point) {
+                    $apart = $this->corridor->minDistanceToRoute($point['lat'], $point['lng'], [$have[$i]]);
+
+                    if ($apart > self::SAME_ROUTE_RADIUS_M) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+    }
+
     private function reusableRoute(array $target, float $driverLat, float $driverLng): ?Route
     {
         $nearDestination = $this->corridor->routeIdsNear($target['lat'], $target['lng'], CorridorMatcher::SERVES_RADIUS_M);
@@ -208,24 +290,26 @@ class TripRouteResolver
         return $name;
     }
 
-    /** @param array{lat: float, lng: float, name: string} $target */
-    private function createRoute(float $driverLat, float $driverLng, array $target): Route
+    /**
+     * @param  array{lat: float, lng: float, name: string}  $target
+     * @param  array<array{lat: float, lng: float, name?: string}>  $via
+     */
+    private function createRoute(float $driverLat, float $driverLng, array $target, array $via = []): Route
     {
-        $snapped = $this->geometry->snapToRoads([
-            ['lat' => $driverLat, 'lng' => $driverLng],
-            ['lat' => $target['lat'], 'lng' => $target['lng']],
-        ]);
+        $controlPoints = self::controlPoints($driverLat, $driverLng, $target, $via);
+        $snapped = $this->geometry->snapToRoads($controlPoints);
 
         $startName = $this->geocoder->reverse($driverLat, $driverLng) ?? 'Kasalukuyang lokasyon';
+        // Deliberately NOT "A → B via C". Half the app parses this label by
+        // splitting on the arrow and taking the far side as the destination;
+        // appending anything there renames the destination everywhere it shows.
+        // The roads live in control_points, where they belong.
         $label = "{$startName} \u{2192} {$target['name']}";
 
         return Route::create([
             'name' => $label,
             'label' => $label,
-            'control_points' => [
-                ['lat' => $driverLat, 'lng' => $driverLng],
-                ['lat' => $target['lat'], 'lng' => $target['lng']],
-            ],
+            'control_points' => $controlPoints,
             'waypoints' => $snapped['waypoints'],
             'length_km' => $snapped['length_km'],
             'duration_min' => $snapped['duration_min'],

@@ -80,8 +80,16 @@ const VehiclePin = memo(({ vehicle, selected, onSelect }) => {
 				{
 					borderColor: vehicle.stale ? theme.border.strong : theme.route[1],
 					borderStyle: vehicle.stale ? 'dashed' : 'solid',
-					backgroundColor: selected ? theme.brand.default : theme.surface.default,
-					opacity: vehicle.stale ? 0.75 : 1
+					// Sunken, not see-through. Opacity let the map and the route
+					// line show straight through a stale pin, which read as a
+					// smudge rather than as "last known position" — the dashed
+					// border and muted glyph already carry that meaning, and
+					// they only work if the badge behind them stays solid.
+					backgroundColor: selected
+						? theme.brand.default
+						: vehicle.stale
+							? theme.surface.sunken
+							: theme.surface.default
 				}
 			]}
 			className="h-11 w-11 items-center justify-center rounded-md border-2"
@@ -567,10 +575,15 @@ export const Map = ({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [places, layoutKey])
 
-	// Crosshair tap: bring the commuter's own dot into view.
+	// Crosshair tap: bring the viewer's own position into view. For a commuter
+	// that is the opt-in dot; for a driver it is their vehicle, which is
+	// already on the map — so the driver screen needs no second marker to
+	// recentre on.
 	useEffect(() => {
-		if (locateNonce > 0 && myLocation && mapRef.current) {
-			mapRef.current.animateCamera({ center: myLocation, zoom: 15 }, { duration: 600 })
+		const here = myLocation ?? selfVehicle?.position
+
+		if (locateNonce > 0 && here && mapRef.current) {
+			mapRef.current.animateCamera({ center: here, zoom: 15 }, { duration: 600 })
 		}
 	}, [locateNonce])
 

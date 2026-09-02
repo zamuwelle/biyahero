@@ -4,8 +4,14 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useTheme } from '@/theme/useTheme'
 import { MAP_STYLES } from '@/theme/mapStyle'
 
-/** Non-interactive thumbnail of the route the driver is about to declare. */
-export const RoutePreview = ({ waypoints = [], height = 150 }) => {
+/**
+ * Non-interactive thumbnail of the route the driver is about to declare.
+ *
+ * `here` puts the driver on it. A route preview without the driver on it is
+ * a picture of a road somewhere — the useful question is "does this start
+ * where I am standing", and that can only be answered by showing both.
+ */
+export const RoutePreview = ({ waypoints = [], here = null, height = 150 }) => {
 	const { theme, scheme } = useTheme()
 	const mapRef = useRef(null)
 
@@ -43,6 +49,16 @@ export const RoutePreview = ({ waypoints = [], height = 150 }) => {
 				toolbarEnabled={false}
 			>
 				<Polyline coordinates={waypoints} strokeColor={theme.route[1]} strokeWidth={5} />
+				{!!here && (
+					<Marker coordinate={here} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true}>
+						<View
+							collapsable={false}
+							style={{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(26,115,232,0.18)' }}
+						>
+							<View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#1A73E8', borderWidth: 2, borderColor: '#FFFFFF' }} />
+						</View>
+					</Marker>
+				)}
 				<Marker coordinate={start} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
 					<View
 						className="h-[14px] w-[14px] rounded-full border-[3px] bg-surface"
