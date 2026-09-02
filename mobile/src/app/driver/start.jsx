@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, View, ScrollView, KeyboardAvoidingView, Platform, Pressable, BackHandler, Keyboard } from 'react-native'
 import { useRouter } from 'expo-router'
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
 import { Screen } from '@/components/ui/Screen'
@@ -63,10 +63,11 @@ export default function StartTrip() {
 	const [selectedRouteId, setSelectedRouteId] = useState(null)
 	const [pinned, setPinned] = useState(null)
 	const [picking, setPicking] = useState(false)
-	// Which pin the map picker is collecting: the destination, or another road
-	// along the way.
-	const [pickMode, setPickMode] = useState('destination')
 	const [via, setVia] = useState([])
+	// Tracing the route: a whole shape drawn in one sitting, kept apart from
+	// `via` until confirmed so backing out leaves the old route alone.
+	const [drawing, setDrawing] = useState(false)
+	const [draft, setDraft] = useState([])
 	const [pickPoint, setPickPoint] = useState(null)
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
@@ -310,24 +311,32 @@ export default function StartTrip() {
 		Keyboard.dismiss()
 	}
 
-	const addVia = async () => {
-		if (!pickPoint) return
-		const point = pickPoint
-		setPicking(false)
-		setVia(list => [...list, point])
+	const openDrawing = () => {
+		setDraft(via)
+		setDrawing(true)
+	}
 
-		// Named on the device, so it costs no request and no rate limit. It is
-		// only a label — the coordinate is what shapes the route.
-		const [place] = await Location.reverseGeocodeAsync(point).catch(() => [])
-		const name = placeLabel(place)
-		if (name) {
-			setVia(list => list.map(p => (p === point ? { ...p, name } : p)))
-		}
+	const confirmDrawing = async () => {
+		const points = draft
+		setVia(points)
+		setDrawing(false)
+
+		// Named on the device, so it costs no request and no rate limit. Labels
+		// only — the coordinates are what shape the route.
+		const named = await Promise.all(
+			points.map(async point => {
+				const [place] = await Location.reverseGeocodeAsync(point).catch(() => [])
+
+				return { ...point, name: placeLabel(place) ?? undefined }
+			})
+		)
+
+		// A later trace may already have replaced this one.
+		setVia(current => (current === points ? named : current))
 	}
 
 	const confirmPin = async () => {
 		if (!pickPoint) return
-		if (pickMode === 'via') return addVia()
 
 		const token = ++chosenRef.current
 		setPicking(false)
@@ -377,6 +386,101 @@ export default function StartTrip() {
 		}
 	}
 
+	/**
+	 * Trace the route.
+	 *
+	 * A jeepney route is a shape, not a pair of endpoints — so the driver draws
+	 * the one they actually run, tap by tap, in the order they drive it. The
+	 * line between taps is straight here; the server snaps it to real roads
+	 * when the trip starts, which is why a rough tap at each junction is enough.
+	 */
+	if (drawing) {
+		return (
+			<View className="flex-1 bg-surface-canvas">
+				<MapView
+					provider={PROVIDER_GOOGLE}
+					style={{ flex: 1 }}
+					initialRegion={{
+						latitude: position?.latitude ?? 14.575,
+						longitude: position?.longitude ?? 121.0,
+						latitudeDelta: 0.08,
+						longitudeDelta: 0.08
+					}}
+					customMapStyle={MAP_STYLES_WITH_PLACES[scheme]}
+					onPress={e => {
+						// Read the coordinate NOW. React nulls the synthetic event
+						// before a functional state updater gets to run, so
+						// reaching into e.nativeEvent in there throws.
+						const point = e.nativeEvent.coordinate
+
+						setDraft(list => [...list, point])
+					}}
+					toolbarEnabled={false}
+					rotateEnabled={false}
+				>
+					{draft.length > 1 && (
+						<Polyline coordinates={draft} strokeColor={theme.route[1]} strokeWidth={5} />
+					)}
+
+					{draft.map((point, index) => (
+						<Marker
+							key={`${point.latitude},${point.longitude},${index}`}
+							coordinate={point}
+							anchor={{ x: 0.5, y: 0.5 }}
+							tracksViewChanges={true}
+						>
+							<View
+								collapsable={false}
+								style={{
+									width: 28,
+									height: 28,
+									borderRadius: 14,
+									alignItems: 'center',
+									justifyContent: 'center',
+									backgroundColor: theme.route[1],
+									borderWidth: 2,
+									borderColor: theme.surface.default
+								}}
+							>
+								<Txt variant="caption" style={{ fontSize: 11, color: theme.text.onBrand }}>{index + 1}</Txt>
+							</View>
+						</Marker>
+					))}
+				</MapView>
+
+				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="gap-1 rounded-lg bg-surface p-3">
+					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.drawHint}</Txt>
+					<Txt variant="caption" className="text-center text-fg-secondary">
+						{draft.length ? copy.startTrip.drawCount(draft.length) : copy.startTrip.drawEmpty}
+					</Txt>
+				</View>
+
+				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
+					<View className="flex-row gap-2">
+						<View className="flex-1">
+							<Button
+								label={copy.startTrip.drawUndo}
+								tone="secondary"
+								onPress={() => setDraft(list => list.slice(0, -1))}
+								disabled={draft.length === 0}
+							/>
+						</View>
+						<View className="flex-1">
+							<Button
+								label={copy.startTrip.drawClear}
+								tone="secondary"
+								onPress={() => setDraft([])}
+								disabled={draft.length === 0}
+							/>
+						</View>
+					</View>
+					<Button label={copy.startTrip.drawDone} onPress={confirmDrawing} disabled={draft.length === 0} />
+					<Button label={copy.common.cancel} tone="secondary" onPress={() => setDrawing(false)} />
+				</View>
+			</View>
+		)
+	}
+
 	if (picking) {
 		return (
 			<View className="flex-1 bg-surface-canvas">
@@ -405,17 +509,11 @@ export default function StartTrip() {
 				</MapView>
 
 				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="rounded-lg bg-surface p-3">
-					<Txt variant="bodyMStrong" className="text-center">
-						{pickMode === 'via' ? copy.startTrip.viaPinHint : copy.startTrip.pinHint}
-					</Txt>
+					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.pinHint}</Txt>
 				</View>
 
 				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
-					<Button
-						label={pickMode === 'via' ? copy.startTrip.viaPinUse : copy.startTrip.pinUse}
-						onPress={confirmPin}
-						disabled={!pickPoint}
-					/>
+					<Button label={copy.startTrip.pinUse} onPress={confirmPin} disabled={!pickPoint} />
 					<Button label={copy.common.cancel} tone="secondary" onPress={() => setPicking(false)} />
 				</View>
 			</View>
@@ -486,7 +584,6 @@ export default function StartTrip() {
 
 					<Pressable
 						onPress={() => {
-							setPickMode('destination')
 							setPickPoint(pinned ?? null)
 							setPicking(true)
 						}}
@@ -531,16 +628,14 @@ export default function StartTrip() {
 							))}
 
 							<Pressable
-								onPress={() => {
-									setPickMode('via')
-									setPickPoint(null)
-									setPicking(true)
-								}}
+								onPress={openDrawing}
 								accessibilityRole="button"
 								className="flex-row items-center gap-3 rounded-lg border-[1.5px] border-dashed border-line-subtle p-3 active:opacity-80"
 							>
-								<MaterialIcons name="add" size={22} color={theme.icon.secondary} />
-								<Txt variant="bodyMStrong" className="text-fg-secondary">{copy.startTrip.viaAdd}</Txt>
+								<MaterialIcons name={via.length ? 'edit' : 'route'} size={22} color={theme.icon.secondary} />
+								<Txt variant="bodyMStrong" className="text-fg-secondary">
+									{via.length ? copy.startTrip.drawEdit : copy.startTrip.drawOpen}
+								</Txt>
 							</Pressable>
 						</View>
 					)}
