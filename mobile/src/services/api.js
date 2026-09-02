@@ -2,8 +2,11 @@ import axios from 'axios'
 import Constants from 'expo-constants'
 import { STALE_AFTER_MS } from '@/theme/tokens'
 
+const rawUrl = Constants.expoConfig?.extra?.apiUrl ?? ''
+const baseURL = rawUrl.endsWith('/api') ? rawUrl : rawUrl.replace(/\/?$/, '/api')
+
 export const client = axios.create({
-	baseURL: Constants.expoConfig?.extra?.apiUrl,
+	baseURL,
 	timeout: 10000,
 	headers: { Accept: 'application/json' }
 })
@@ -187,7 +190,7 @@ export const loginDriver = credentials =>
 
 export const fetchMe = () => client.get('/me').then(res => res.data?.data)
 
-export const logoutDriver = () => client.post('/logout').catch(() => {})
+export const logoutDriver = () => client.post('/logout').catch(() => { })
 
 export const fetchCurrentTrip = () => client.get('/trips/current').then(res => res.data?.data)
 
