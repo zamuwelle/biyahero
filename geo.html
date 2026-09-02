@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Biyahero — Commuter Node</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f0f9ff;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container { width: 100%; max-width: 560px; }
+    h1 { font-size: 22px; color: #1e40af; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+    }
+    .card-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .coords { font-size: 18px; font-weight: 600; color: #0f172a; }
+    .coords span { font-size: 13px; font-weight: 400; color: #64748b; margin-left: 6px; }
+    .status { font-size: 14px; }
+    .status.active { color: #16a34a; }
+    .status.error  { color: #dc2626; }
+    .status.waiting { color: #f59e0b; }
+    pre {
+      background: #0f172a;
+      color: #7dd3fc;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .counter { font-size: 12px; color: #94a3b8; margin-top: 8px; }
+    .controls { display: flex; gap: 10px; margin-bottom: 16px; }
+    button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #btnStart { background: #2563eb; color: #fff; }
+    #btnStop  { background: #e2e8f0; color: #475569; }
+    #btnStart:disabled { background: #93c5fd; cursor: default; }
+    #btnStop:disabled  { opacity: .4; cursor: default; }
+    .dot {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 6px;
+      background: #94a3b8;
+    }
+    .dot.pulse {
+      background: #16a34a;
+      animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: .5; transform: scale(1.3); }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📍 Commuter Node</h1>
+  <p class="subtitle">Live GPS → Biyahero radar pipeline</p>
+
+  <div class="controls">
+    <button id="btnStart" onclick="startTracking()">Start Tracking</button>
+    <button id="btnStop"  onclick="stopTracking()" disabled>Stop</button>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Your Position</div>
+    <div class="coords" id="coordDisplay">—</div>
+    <div class="counter" id="accuracy"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Status</div>
+    <div class="status waiting" id="statusDisplay">
+      <span class="dot" id="dot"></span>Waiting to start…
+    </div>
+    <div class="counter" id="pollCounter"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Last Radar Response</div>
+    <pre id="responseDisplay">No response yet.</pre>
+  </div>
+</div>
+
+<script>
+  // ── CONFIG ──────────────────────────────────────────────────────────────────
+  const BACKEND_URL = 'https://biyahero-foaq.onrender.com'
+
+  const INTERVAL_MS  = 2000
+  const RADAR_PARAMS = {
+    radius_km:    10.0,
+    vehicle_type: 'jeepney',
+    route_id:     1,
+    hour_of_day:  new Date().getHours(),
+    day_of_week:  ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date().getDay()],
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
+  let intervalId    = null
+  let watchId       = null
+  let pollCount     = 0
+  let currentCoords = null  // updated passively by watchPosition
+
+  function setStatus(msg, type = 'waiting') {
+    const el = document.getElementById('statusDisplay')
+    el.textContent = ''
+    const dot = document.createElement('span')
+    dot.className = 'dot' + (type === 'active' ? ' pulse' : '')
+    el.appendChild(dot)
+    el.appendChild(document.createTextNode(msg))
+    el.className = 'status ' + type
+  }
+
+  function startTracking() {
+    // 1. Ensure page is served over HTTPS
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      setStatus('Geolocation requires HTTPS on live URLs', 'error');
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setStatus('Geolocation not supported by this browser', 'error');
+      return;
+    }
+
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled  = false;
+    setStatus('Requesting location permission…', 'waiting');
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        currentCoords = { lat, lng };
+        document.getElementById('coordDisplay').innerHTML =
+          `${lat.toFixed(6)}, ${lng.toFixed(6)} <span>±${Math.round(accuracy)}m</span>`;
+
+        // Start backend polling interval ONLY after receiving the first valid position fix
+        if (!intervalId) {
+          intervalId = setInterval(poll, INTERVAL_MS);
+        }
+      },
+      (err) => {
+        // Immediately clear state and reset UI buttons on error
+        stopTracking();
+
+        if (err.code === err.PERMISSION_DENIED) {
+          setStatus('Location access denied. Please click the site lock icon in your URL bar to allow location.', 'error');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setStatus('GPS signal unavailable. Check device location settings.', 'error');
+        } else if (err.code === err.TIMEOUT) {
+          setStatus('GPS request timed out. Try again.', 'error');
+        } else {
+          setStatus('GPS error: ' + err.message, 'error');
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 }
+    );
+  }
+
+  async function poll() {
+    if (!currentCoords) {
+      setStatus('Waiting for first GPS fix…', 'waiting')
+      return
+    }
+
+    const { lat, lng } = currentCoords
+    const body = { lat, lng, ...RADAR_PARAMS }
+
+    let data
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/commuter-radar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      data = await res.json()
+    } catch (err) {
+      setStatus('Fetch error: ' + err.message, 'error')
+      document.getElementById('responseDisplay').textContent = err.message
+      return
+    }
+
+    pollCount++
+    document.getElementById('pollCounter').textContent = `Polls sent: ${pollCount}`
+    document.getElementById('responseDisplay').textContent = JSON.stringify(data, null, 2)
+    setStatus(`Tracking active — last poll ${new Date().toLocaleTimeString()}`, 'active')
+  }
+
+  function stopTracking() {
+    clearInterval(intervalId)
+    intervalId = null
+
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId)
+      watchId = null
+    }
+
+    currentCoords = null
+    document.getElementById('btnStart').disabled = false
+    document.getElementById('btnStop').disabled  = true
+    setStatus('Stopped', 'waiting')
+  }
+</script>
+</body>
+</html>

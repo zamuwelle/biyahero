@@ -59,5 +59,11 @@ module.exports = ({ config }) => ({
 		eas: {
 			projectId: '7556787b-9d13-409d-996a-42a640c6de1d'
 		}
+	},
+	updates: {
+		url: 'https://u.expo.dev/7556787b-9d13-409d-996a-42a640c6de1d'
+	},
+	runtimeVersion: {
+		policy: 'appVersion'
 	}
 })

@@ -64,7 +64,7 @@ const startBroadcastWatcher = (tripId, get, set) => {
 				}
 			}
 
-			api.pingTrip(tripId, { latitude, longitude, street, distanceKm: Number(travelledKm.toFixed(2)) }).catch(() => {})
+			api.pingTrip(tripId, { latitude, longitude, street, distanceKm: Number(travelledKm.toFixed(2)) }).catch(() => { })
 		}
 	)
 }
@@ -246,9 +246,9 @@ export const useStore = create((set, get) => ({
 				// no destination row knows can still be pinned on the map.
 				destinationPosition: meta.destination_position
 					? {
-							latitude: Number(meta.destination_position.lat),
-							longitude: Number(meta.destination_position.lng)
-						}
+						latitude: Number(meta.destination_position.lat),
+						longitude: Number(meta.destination_position.lng)
+					}
 					: null,
 				// The place this list was measured against. Naming a distance
 				// after a destination it was not computed for invents a figure.
@@ -533,7 +533,7 @@ export const useStore = create((set, get) => ({
 	endTrip: async () => {
 		const { trip } = get()
 		get().stopBroadcast()
-		if (trip) await api.endTrip(trip.id).catch(() => {})
+		if (trip) await api.endTrip(trip.id).catch(() => { })
 		set({ trip: null, isBroadcasting: false })
 		get().loadSummary()
 	},
