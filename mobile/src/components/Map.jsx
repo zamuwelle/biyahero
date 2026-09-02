@@ -567,10 +567,15 @@ export const Map = ({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [places, layoutKey])
 
-	// Crosshair tap: bring the commuter's own dot into view.
+	// Crosshair tap: bring the viewer's own position into view. For a commuter
+	// that is the opt-in dot; for a driver it is their vehicle, which is
+	// already on the map — so the driver screen needs no second marker to
+	// recentre on.
 	useEffect(() => {
-		if (locateNonce > 0 && myLocation && mapRef.current) {
-			mapRef.current.animateCamera({ center: myLocation, zoom: 15 }, { duration: 600 })
+		const here = myLocation ?? selfVehicle?.position
+
+		if (locateNonce > 0 && here && mapRef.current) {
+			mapRef.current.animateCamera({ center: here, zoom: 15 }, { duration: 600 })
 		}
 	}, [locateNonce])
 

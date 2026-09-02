@@ -13,6 +13,7 @@ import { RoutePreview } from '@/components/RoutePreview'
 import { useStore } from '@/services/store'
 import { fetchRouteForDestination, fetchRoute, fetchEta, fetchNearbyRoutes, fetchRecentRoutes, searchPlaces, resolvePlace, newSearchSession, previewRoute } from '@/services/api'
 import { MatchedText } from '@/components/MatchedText'
+import { LocateButton } from '@/components/LocateButton'
 import { placeLabel } from '@/services/geo'
 import { MAP_STYLES_WITH_PLACES } from '@/theme/mapStyle'
 import { useTheme } from '@/theme/useTheme'
@@ -90,6 +91,13 @@ export default function StartTrip() {
 	// What the roads make of the drawn line — fetched so the driver sees it
 	// while they can still move a point.
 	const [snapped, setSnapped] = useState(null)
+	const drawMapRef = useRef(null)
+	const pickMapRef = useRef(null)
+
+	/** Both bare maps recentre the same way: on the fix the route uses. */
+	const recentre = ref => () => {
+		if (position) ref.current?.animateCamera({ center: position, zoom: 15 }, { duration: 600 })
+	}
 	const [pickPoint, setPickPoint] = useState(null)
 	const [route, setRoute] = useState(null)
 	const [eta, setEta] = useState(null)
@@ -483,6 +491,7 @@ export default function StartTrip() {
 		return (
 			<View className="flex-1 bg-surface-canvas">
 				<MapView
+					ref={drawMapRef}
 					provider={PROVIDER_GOOGLE}
 					style={{ flex: 1 }}
 					initialRegion={{
@@ -547,6 +556,8 @@ export default function StartTrip() {
 					</Txt>
 				</View>
 
+				<LocateButton onPress={recentre(drawMapRef)} style={{ position: 'absolute', right: 24, bottom: 250 }} />
+
 				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
 					<View className="flex-row gap-2">
 						<View className="flex-1">
@@ -577,6 +588,7 @@ export default function StartTrip() {
 		return (
 			<View className="flex-1 bg-surface-canvas">
 				<MapView
+					ref={pickMapRef}
 					provider={PROVIDER_GOOGLE}
 					style={{ flex: 1 }}
 					initialRegion={{
@@ -605,6 +617,8 @@ export default function StartTrip() {
 				<View style={{ position: 'absolute', top: 56, left: 24, right: 24, elevation: 6 }} className="rounded-lg bg-surface p-3">
 					<Txt variant="bodyMStrong" className="text-center">{copy.startTrip.pinHint}</Txt>
 				</View>
+
+				<LocateButton onPress={recentre(pickMapRef)} style={{ position: 'absolute', right: 24, bottom: 180 }} />
 
 				<View style={{ position: 'absolute', bottom: 40, left: 24, right: 24, gap: 8 }}>
 					<Button label={copy.startTrip.pinUse} onPress={confirmPin} disabled={!pickPoint} />
