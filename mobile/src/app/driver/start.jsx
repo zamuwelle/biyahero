@@ -311,28 +311,64 @@ export default function StartTrip() {
 		Keyboard.dismiss()
 	}
 
-	const openDrawing = () => {
+	/**
+	 * A traced route begins at the driver. Without a fix there is no first
+	 * point to join, so this refuses up front rather than letting them draw a
+	 * whole route and fail at the last button.
+	 */
+	const openDrawing = async () => {
+		const servicesOn = await Location.hasServicesEnabledAsync().catch(() => false)
+		const granted = servicesOn && (await Location.requestForegroundPermissionsAsync()).status === 'granted'
+
+		if (!granted) return showToast(copy.startTrip.drawNeedsLocation)
+
 		setDraft(via)
 		setDrawing(true)
 	}
 
+	/**
+	 * The end of the line is where the trip goes.
+	 *
+	 * A drawn route does not hang off a destination the driver searched for —
+	 * it IS the trip. So the last point becomes the destination, the ones
+	 * before it become the roads, and the name is proposed from the map and
+	 * left in the destination field for the driver to correct. Commuters
+	 * search that name, so it has to be theirs to fix.
+	 */
 	const confirmDrawing = async () => {
 		const points = draft
-		setVia(points)
+		if (points.length === 0) return
+
+		const token = ++chosenRef.current
+		const target = points[points.length - 1]
+		const roads = points.slice(0, -1)
+
+		setVia(roads)
+		setPinned(target)
+		setPickedKnown(false)
+		setSelectedRouteId(null)
+		setSuggestions([])
 		setDrawing(false)
 
-		// Named on the device, so it costs no request and no rate limit. Labels
-		// only — the coordinates are what shape the route.
-		const named = await Promise.all(
-			points.map(async point => {
-				const [place] = await Location.reverseGeocodeAsync(point).catch(() => [])
+		// Named on the device, so it costs no request and no rate limit.
+		const [place] = await Location.reverseGeocodeAsync(target).catch(() => [])
+		if (chosenRef.current !== token) return
 
-				return { ...point, name: placeLabel(place) ?? undefined }
+		const name = placeLabel(place) ?? copy.startTrip.pinnedFallback
+		// Claim the text as a made choice, or the type-ahead treats the name we
+		// just wrote as fresh typing and re-opens the list over it.
+		chosenTextRef.current = name
+		setDestination(name)
+
+		const named = await Promise.all(
+			roads.map(async road => {
+				const [spot] = await Location.reverseGeocodeAsync(road).catch(() => [])
+
+				return { ...road, name: placeLabel(spot) ?? undefined }
 			})
 		)
 
-		// A later trace may already have replaced this one.
-		setVia(current => (current === points ? named : current))
+		setVia(current => (current === roads ? named : current))
 	}
 
 	const confirmPin = async () => {
@@ -418,8 +454,24 @@ export default function StartTrip() {
 					toolbarEnabled={false}
 					rotateEnabled={false}
 				>
-					{draft.length > 1 && (
+					{/* The route starts at the driver, so the line does too —
+					    otherwise the first tap looks unconnected to anything. */}
+					{!!position && draft.length > 0 && (
+						<Polyline coordinates={[position, ...draft]} strokeColor={theme.route[1]} strokeWidth={5} />
+					)}
+					{!position && draft.length > 1 && (
 						<Polyline coordinates={draft} strokeColor={theme.route[1]} strokeWidth={5} />
+					)}
+
+					{!!position && (
+						<Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} title={copy.startTrip.drawYouAreHere}>
+							<View
+								collapsable={false}
+								style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(26,115,232,0.18)' }}
+							>
+								<View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#1A73E8', borderWidth: 2, borderColor: '#FFFFFF' }} />
+							</View>
+						</Marker>
 					)}
 
 					{draft.map((point, index) => (
@@ -597,10 +649,11 @@ export default function StartTrip() {
 						{!!pinned && <MaterialIcons name="check-circle" size={18} color={theme.text.success} />}
 					</Pressable>
 
-					{/* Only for a route we are about to build. Tapping a listed
-					    corridor already chose its roads, and a driver with no
-					    destination yet has nothing for these to sit between. */}
-					{!selectedRouteId && (destination.trim().length > 0 || pinned) && (
+					{/* Its own way to declare a trip, not an add-on to the
+					    destination search — the drawn line decides where the trip
+					    goes. Hidden only when a listed corridor is chosen, which
+					    already carries its own roads. */}
+					{!selectedRouteId && (
 						<View className="gap-3">
 							<View className="gap-[3px]">
 								<Txt variant="labelS" className="text-fg-secondary">{copy.startTrip.viaLabel}</Txt>
